@@ -84,12 +84,6 @@ pdfplumber
 python-dotenv
 ```
 
-Optionale Pakete:
-
-* `pandas` — für Tabellen/JSON-Verarbeitung
-* `typer` — CLI Interface
-* `tqdm` — Fortschrittsbalken bei Batch-Verarbeitung
-
 ---
 
 ## 🔐 Umgang mit Secrets
