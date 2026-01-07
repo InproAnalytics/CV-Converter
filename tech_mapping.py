@@ -1,7 +1,7 @@
 # tech_mapping.py
 
 
-# ===== МАППИНГ =====
+# ===== MAPPING =====
 TECH_MAPPING = {
     # ===== Programming Languages =====
     r"(?i)\bpython\b": "programming_languages",
@@ -196,7 +196,7 @@ TECH_MAPPING = {
 
 if __name__ == "__main__":
 
-    # Полный маппинг технологий + тест с выводом в PDF
+    # Full technology mapping + PDF output test
 
     import re
     from reportlab.lib import colors
@@ -210,132 +210,3 @@ if __name__ == "__main__":
     from reportlab.pdfbase import pdfmetrics
     from pprint import pprint
 
-
-    # ===== РЕГИСТРАЦИЯ ШРИФТОВ =====
-    pdfmetrics.registerFont(TTFont("Roboto", "fonts/Roboto-Regular.ttf"))
-    pdfmetrics.registerFont(TTFont("Roboto-Bold", "fonts/Roboto-Bold.ttf"))
-    BASE_FONT = "Roboto"
-    BOLD_FONT = "Roboto-Bold"
-
-        
-    # ===== ТЕСТ И ВЫВОД В PDF =====
-    from reportlab.platypus import (
-        SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer, KeepTogether, PageBreak
-    )
-    def test_mapping_to_pdf():
-        # === ПОЛНЫЙ НАБОР ТЕСТОВЫХ ТЕХНОЛОГИЙ ===
-        test_inputs = [
-            # --- Programming Languages ---
-            "Python", "JavaScript", "TypeScript", "SQL", "Bash", "Java", "Go", "C++", "C#", "Ruby", "Scala", "R", "Node.js",
-
-            # --- Backend ---
-            "FastAPI", "Django REST", "Flask", "Celery", "SQLAlchemy", "BeautifulSoup",
-            "WebSocket", "Aiohttp", "Microservices", "Clean Architecture", "SOLID", "REST API", "MVC",
-
-            # --- Frontend ---
-            "React", "Next.js", "Redux", "Material UI", "Ant Design", "SCSS", "CSS", "HTML",
-            "Vue.js", "Angular", "AG Grid",
-
-            # --- Databases ---
-            "PostgreSQL", "pgvector", "MySQL", "Redis", "MongoDB", "Elasticsearch",
-            "SQL Server", "Snowflake", "BigQuery", "Hadoop", "Cassandra", "Oracle",
-
-            # --- Cloud Platforms ---
-            "AWS", "Azure", "Google Cloud", "GCP", "DigitalOcean", "Heroku", "Linode",
-            "Azure App Services", "Azure Functions",
-
-            # --- DevOps / IaC ---
-            "Git", "GitHub", "GitLab", "Bitbucket",
-            "Terraform", "Pulumi", "Ansible", "CloudFormation",
-            "ARM Templates", "Bicep", "Vagrant", "Morpheus",
-            "Azure DevOps", "Azure Pipelines",
-
-            # --- CI/CD Tools ---
-            "Jenkins", "GitLab CI/CD", "GitHub Actions", "Bitbucket Pipelines",
-            "Maven", "Nexus", "TeamCity", "CircleCI", "Travis CI",
-
-            # --- Containers & Orchestration ---
-            "Docker", "Docker Compose", "Kubernetes", "Helm", "Kustomize", "OpenShift",
-            "AKS", "EKS", "GKE",
-
-            # --- Monitoring & Observability ---
-            "Prometheus", "Grafana", "Datadog", "Splunk", "CloudWatch", "CloudTrail",
-            "Sentry", "Application Insights", "Log Analytics", "Logstash", "Kibana", "ELK Stack",
-
-            # --- Security ---
-            "IAM", "WAF", "GuardDuty", "Shield", "Security Groups", "NACL", "RBAC",
-            "Snyk", "Macie", "Inspector", "Azure Key Vault", "Azure Active Directory", "Keycloak",
-
-            # --- AI / ML / BI Tools ---
-            "OpenAI", "LLMs", "LlamaIndex", "Whisper", "DeepFace", "LangChain", "PyTorch",
-            "TensorFlow", "Keras", "Scikit-learn", "Pandas", "NumPy", "PySpark",
-            "Databricks", "Airflow", "Azure Data Factory", "Microsoft Fabric", "Kusto",
-            "SSIS", "SSRS", "SAS Viya", "Power BI", "DAX", "Tabular Model",
-
-            # --- Other Tools ---
-            "Nginx", "Apache", "Linux", "Windows Server", "Red Hat", "CentOS",
-            "VMware", "Elastic Beanstalk", "ECS", "Security Monkey", "CloudTracker"
-        ]
-
-
-        # === Классификация ===
-        results = {}
-        for tech in test_inputs:
-            matched = False
-            for pattern, category in TECH_MAPPING.items():
-                if re.search(pattern, tech.lower()):
-                    results.setdefault(category, []).append(tech)
-                    matched = True
-                    break
-            if not matched:
-                results.setdefault("unmatched", []).append(tech)
-
-        # === Создание PDF ===
-        doc = SimpleDocTemplate("tech_mapping_test_report.pdf", pagesize=A4)
-        styles = getSampleStyleSheet()
-        styles["Normal"].fontName = BASE_FONT
-        styles["Normal"].fontSize = 10
-        styles["Heading2"].fontName = BOLD_FONT
-        styles["Heading2"].fontSize = 18
-
-        elements = [
-            Paragraph("<b>TECH MAPPING – FULL CATEGORY TEST REPORT</b>", styles["Heading2"]),
-            Spacer(1, 10)
-        ]
-
-        # === Сортировка категорий ===
-        desired_order = [
-            "programming_languages", "backend", "frontend", "databases", "cloud_platforms",
-            "devops_iac", "ci_cd_tools", "containers_orchestration",
-            "monitoring_security", "security", "ai_ml_tools", "other_tools", "unmatched"
-        ]
-
-        for i, category in enumerate(desired_order, start=1):
-            tools = results.get(category, [])
-            if not tools:
-                continue
-
-            cat_title = Paragraph(f"<b>{category.replace('_', ' ').title()}</b>", styles["Normal"])
-            tool_text = Paragraph(", ".join(sorted(set(tools))), styles["Normal"])
-
-            table = Table([[cat_title, tool_text]], colWidths=[60 * mm, None], splitByRow=1)
-            style = TableStyle([
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("BOX", (0, 0), (-1, -1), 0.25, colors.grey),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ])
-            if i % 2 == 0:
-                style.add("BACKGROUND", (0, 0), (-1, -1), colors.whitesmoke)
-            table.setStyle(style)
-
-            elements.append(KeepTogether([table, Spacer(1, 6)]))
-            if i % 6 == 0:  # каждые 6 категорий — новая страница
-                elements.append(PageBreak())
-
-        doc.build(elements)
-        print("\n✅ PDF создан: tech_mapping_test_report.pdf")
-
-    test_mapping_to_pdf()

@@ -1,12 +1,12 @@
 # CV-Converter
 
-## 🎯 Beschreibung
+## Beschreibung
 Ein Tool zur Extraktion von Text aus PDF-Lebensläufen und zur Umwandlung in strukturiertes JSON mithilfe der **ChatGPT API**.  
 Das JSON folgt einem vordefinierten Schema und kann zur Befüllung von Standard-CV-Templates verwendet werden.
 
 ---
 
-## 📁 Projektstruktur
+## Projektstruktur
 
 ```
 
@@ -53,12 +53,12 @@ python -m venv .venv
 source .venv/bin/activate
 ```
 
-ERROR:  не подтянулись библиотеки:
+ERROR: dependencies were not installed:
 
-Нажми в VS Code: Ctrl + Shift + P
-Введи и выбери: Python: Select Interpreter
-В списке выбери:
-.venv — Python 3.12.1 (или что-то похожее)
+In VS Code press: Ctrl + Shift + P
+Type and select: Python: Select Interpreter
+From the list choose:
+.venv — Python 3.12.1 (or similar)
 
 
 ### 3. Abhängigkeiten installieren
@@ -142,3 +142,5 @@ Daher in `.gitignore` eintragen:
 * Das Schema entspricht den Standard-CV-Templates
 
 ```
+
+

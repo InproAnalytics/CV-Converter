@@ -5,12 +5,12 @@ from typing import Any, Dict
 
 
 # ============================================================
-# 1️⃣ Безопасное сохранение JSON
+# 1️⃣ Safe JSON save
 # ============================================================
 def save_json(filepath: str, data: Dict[str, Any]):
     """
-    Безопасно сохраняет JSON в указанный путь.
-    Использует атомарную запись: сначала во временный файл, потом заменяет оригинал.
+    Safely saves JSON to the given path.
+    Uses an atomic write: first write to a temp file, then replace the original.
     """
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
     tmp_fd, tmp_path = tempfile.mkstemp(prefix="tmp_json_", suffix=".json")
@@ -30,10 +30,10 @@ def save_json(filepath: str, data: Dict[str, Any]):
 
 
 # ============================================================
-# 2️⃣ Безопасная загрузка JSON
+# 2️⃣ Safe JSON load
 # ============================================================
 def load_json(filepath: str) -> Dict[str, Any]:
-    """Загружает JSON, если он существует, иначе возвращает пустой словарь."""
+    """Loads JSON if it exists; otherwise returns an empty dict."""
     if not os.path.exists(filepath):
         return {}
     try:
@@ -46,12 +46,12 @@ def load_json(filepath: str) -> Dict[str, Any]:
 
 
 # ============================================================
-# 3️⃣ Проверка пустых полей
+# 3️⃣ Empty field check
 # ============================================================
 def has_empty_fields(data: Any) -> bool:
     """
-    Проверяет рекурсивно, есть ли пустые строки, списки или словари.
-    Возвращает True, если найдено хотя бы одно пустое поле.
+    Recursively checks whether there are empty strings, lists, or dicts.
+    Returns True if at least one empty field is found.
     """
     if data is None:
         return True
@@ -69,11 +69,11 @@ def has_empty_fields(data: Any) -> bool:
 
 
 # ============================================================
-# 4️⃣ Подсчёт пустых полей
+# 4️⃣ Empty field count
 # ============================================================
 def count_empty_fields(data: Any) -> int:
     """
-    Рекурсивно считает количество пустых полей (строк, списков, словарей).
+    Recursively counts the number of empty fields (strings, lists, dicts).
     """
     count = 0
 
@@ -97,7 +97,7 @@ def count_empty_fields(data: Any) -> int:
 
 
 # ============================================================
-# 5️⃣ Утилиты для отладки (опционально)
+# 5️⃣ Debug utilities (optional)
 # ============================================================
 if __name__ == "__main__":
     test_data = {
@@ -117,20 +117,3 @@ if __name__ == "__main__":
     loaded = load_json("data_output/test.json")
     print("Loaded JSON keys:", list(loaded.keys()))
 
-# ============================================================
-# 🔹 Normalize year helper
-# ============================================================
-def normalize_year(y: str) -> str:
-    """
-    Преобразует двухзначные годы в четырёхзначные.
-    Примеры:
-    - "21" → "2021"
-    - "98" → "1998"
-    - "2023" → "2023"
-    """
-    y = str(y).strip()
-    if not y.isdigit():
-        return y
-    if len(y) == 2:
-        return f"20{y}" if int(y) <= 30 else f"19{y}"
-    return y

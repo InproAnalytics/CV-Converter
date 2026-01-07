@@ -4,11 +4,11 @@ from tech_mapping import TECH_MAPPING
 
 def remap_hard_skills(hard_skills_from_gpt):
     """
-    Улучшенная нормализация hard_skills:
-    - Распределяет всё по TECH_MAPPING
-    - Убирает пустые и дубли
-    - Схлопывает облака (Azure, AWS, GCP)
-    - Распознаёт “мусор” из other_tools и возвращает его в правильные категории
+    Improved hard_skills normalization:
+    - Routes everything via TECH_MAPPING
+    - Removes empty values and duplicates
+    - Collapses cloud platforms (Azure, AWS, GCP)
+    - Detects "noise" in other_tools and moves it into proper categories
     """
 
     all_categories = sorted(set(TECH_MAPPING.values()))
@@ -18,7 +18,7 @@ def remap_hard_skills(hard_skills_from_gpt):
     if not isinstance(hard_skills_from_gpt, dict):
         return {}
 
-    # --- Основное распределение по шаблонам
+    # --- Main distribution via patterns
     for category, tools in hard_skills_from_gpt.items():
         if not isinstance(tools, list):
             continue
@@ -37,7 +37,7 @@ def remap_hard_skills(hard_skills_from_gpt):
             target_cat = matched_category or "other_tools"
             mapped_skills[target_cat].append({"name": name})
 
-    # --- 🧠 Умная перераспределение "мусора" из other_tools
+    # --- 🧠 Smart reassignment of "noise" from other_tools
     if mapped_skills.get("other_tools"):
         reassign = {
             "data_engineering": [
@@ -78,7 +78,7 @@ def remap_hard_skills(hard_skills_from_gpt):
                 mapped_skills[cat].extend(vals)
         mapped_skills["other_tools"] = remaining_other
 
-    # --- ☁️ Схлопывание облаков
+    # --- ☁️ Collapse cloud platforms
     def collapse_clouds(category, keywords, clean_name):
         items = mapped_skills.get(category, [])
         if any(any(k in t["name"].lower() for k in keywords) for t in items):
@@ -88,7 +88,7 @@ def remap_hard_skills(hard_skills_from_gpt):
     collapse_clouds("cloud_platforms", ["aws", "amazon web services"], "AWS")
     collapse_clouds("cloud_platforms", ["google cloud", "gcp"], "Google Cloud")
 
-    # --- 🧹 Чистка и сортировка
+    # --- 🧹 Cleanup and sorting
     for cat, tools in mapped_skills.items():
         seen = set()
         unique = []
@@ -99,7 +99,7 @@ def remap_hard_skills(hard_skills_from_gpt):
                 unique.append(t)
         mapped_skills[cat] = sorted(unique, key=lambda x: x["name"].lower())
 
-    # --- Удаляем пустые
+    # --- Drop empty categories
     cleaned = {k: v for k, v in mapped_skills.items() if v}
 
     return cleaned

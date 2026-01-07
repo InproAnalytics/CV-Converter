@@ -6,3 +6,5 @@ langdetect
 streamlit
 pandas
 requests
+pdfreader
+PyPDF2

@@ -1,11 +1,11 @@
 import re
 import json
+import ast
 from collections import defaultdict
 from datetime import datetime
-from utils import normalize_year
 
 # ===============================================
-# 🔤 Языки
+# 🔤 Languages
 # ===============================================
 
 def unify_languages(langs, original_text=None):
@@ -49,7 +49,7 @@ def unify_languages(langs, original_text=None):
     return unique
 
 # ===============================================
-# 🗓 Даты
+# 🗓 Dates
 # ===============================================
 
 def unify_durations(projects):
@@ -114,9 +114,72 @@ def unify_durations(projects):
 
     return projects
 
-# ===============================================
-# 🧹 Очистка hard_skills
-# ===============================================
+def normalize_year(text: str) -> str:
+    """
+    Normalisiert Jahresangaben aus verschiedenen Formaten.
+    Unterstützte Beispiele:
+    '07.21' → '2021'
+    '07/2021' → '2021'
+    '2020' → '2020'
+    '21' → '2021'
+    """
+    import re
+
+    if not text:
+        return ""
+
+    text = str(text).strip()
+
+    # Versuche, Jahr mit 4 Ziffern zu finden (z. B. 2021 oder 1999)
+    match = re.search(r"\b(19|20)\d{2}\b", text)
+    if match:
+        return match.group(0)
+
+    # Zweistelliges Jahr erkennen und auf 20xx mappen
+    match = re.search(r"\b(\d{2})\b", text)
+    if match:
+        year = int(match.group(1))
+        # Heuristik: falls < 30 → 2000+, sonst 1900+
+        return f"20{year:02d}" if year < 30 else f"19{year:02d}"
+
+    return ""
+
+
+# ============================================================
+# 📆 Fix open date ranges
+# ============================================================
+def fix_open_date_ranges(text_or_json):
+    if isinstance(text_or_json, dict):
+        for key, value in text_or_json.items():
+            if isinstance(value, dict):
+                text_or_json[key] = fix_open_date_ranges(value)
+            elif isinstance(value, list):
+                new_list = []
+                for item in value:
+                    if isinstance(item, (dict, str)):
+                        new_list.append(fix_open_date_ranges(item))
+                    else:
+                        new_list.append(item)
+                text_or_json[key] = new_list
+            elif key.lower() in ["duration", "years_of_experience"] and isinstance(value, str):
+                text_or_json[key] = fix_open_date_ranges(value)
+        return text_or_json
+
+    text = str(text_or_json)
+    month_map = {
+        "01": "Jan", "1": "Jan", "02": "Feb", "2": "Feb", "03": "Mar", "3": "Mar",
+        "04": "Apr", "4": "Apr", "05": "May", "5": "May", "06": "Jun", "6": "Jun",
+        "07": "Jul", "7": "Jul", "08": "Aug", "8": "Aug", "09": "Sep", "9": "Sep",
+        "10": "Oct", "11": "Nov", "12": "Dec"
+    }
+
+    for num, name in month_map.items():
+        text = re.sub(rf"\b{num}\.?\s?(\d{{2}})\b", rf"{name} 20\1", text)
+
+    text = re.sub(r"([A-Za-z]{{3}} 20\d{{2}})\s*[–-]\s*$", r"\1 – Present", text)
+    text = re.sub(r"\b(0?[1-9]|1[0-2])[./](20\d{2})\b", lambda m: f"{month_map[m.group(1).zfill(2)]} {m.group(2)}", text)
+
+    return text
 
 def clean_duplicates_in_skills(skills):
     if not isinstance(skills, dict):
@@ -135,10 +198,6 @@ def clean_duplicates_in_skills(skills):
         cleaned[cat] = unique
     return cleaned
 
-# ===============================================
-# 📊 skills_overview: разделить инструменты
-# ===============================================
-
 def split_skills_overview_rows(skills):
     if not isinstance(skills, list):
         return []
@@ -148,10 +207,10 @@ def split_skills_overview_rows(skills):
         if not isinstance(row, dict):
             continue
 
-        category = row.get("category", "").strip()
+        category = str(row.get("category", "")).strip()
         tools = row.get("tools", [])
 
-        # 🧠 Нормализуем: если строка — разбиваем, если список — оставляем
+        # 🧠 Normalize: if it's a string, split it; if it's a list, keep it
         if isinstance(tools, str):
             tools_list = [t.strip() for t in re.split(r"[,/]", tools) if t.strip()]
         elif isinstance(tools, list):
@@ -159,17 +218,16 @@ def split_skills_overview_rows(skills):
         else:
             tools_list = []
 
-        years = row.get("years_of_experience", "").strip()
-
+        years_raw = row.get("years_of_experience", "")
+        years = str(years_raw).strip() if years_raw is not None else ""
+        
         for tool in tools_list:
             result.append({
                 "category": category,
                 "tool": tool,
                 "years_of_experience": years
             })
-
     return result
-   
    
 def generate_skills_overview(skills_overview_raw):
     if not isinstance(skills_overview_raw, list):
@@ -187,9 +245,11 @@ def generate_skills_overview(skills_overview_raw):
 
         grouped[category]["tools"].append(tool)
         try:
-            grouped[category]["years"].append(float(years))
-        except ValueError:
-            continue
+            years_clean = re.sub(r"[^\d.]", "", years)
+            grouped[category]["years"].append(float(years_clean) if years_clean else 0)
+        except Exception:
+            grouped[category]["years"].append(0)
+
 
     final_overview = []
     for category, data in grouped.items():
@@ -201,28 +261,232 @@ def generate_skills_overview(skills_overview_raw):
 
     return final_overview
 
+def filter_skills_overview(skills):
+    seen = set()
+    filtered = []
+    for item in skills:
+        category = item.get("category")
+        tools = item.get("tools", [])
+        years = item.get("years_of_experience", "").strip()
+
+        # Remove only junk: missing category or missing tools
+        if not category or not tools:
+            continue
+
+        key = (category, tuple(sorted(tools)))
+        if key not in seen:
+            seen.add(key)
+            filtered.append(item)
+    return filtered
+
+# Guard for nested string fields
+def safe_parse_if_str(field):
+    if isinstance(field, str):
+        try:
+            return json.loads(field)
+        except json.JSONDecodeError:
+            try:
+                return ast.literal_eval(field)
+            except Exception:
+                return []
+    return field
 # ===============================================
-# 🧩 Основной вызов
+# 🏭 Domain / industry normalization
+INDUSTRY_KEYWORDS = {
+    # --- Financial ---
+    "bank": "banking",
+    "banking": "banking",
+    "financial": "financial services",
+    "finance": "financial services",
+    "financing": "financial services",
+    "insurance": "insurance",
+    "insurer": "insurance",
+    "wealth": "wealth management",
+    "asset management": "asset management",
+    "investment": "investment management",
+
+    # --- Consulting / Professional Services ---
+    "consult": "consulting",
+    "advisory": "consulting",
+    "professional services": "professional services",
+
+    # --- Telecom / Media ---
+    "telecom": "telecommunications",
+    "telecommunications": "telecommunications",
+    "mobile operator": "telecommunications",
+    "isp": "telecommunications",
+
+    # --- Education ---
+    "university": "education",
+    "school": "education",
+    "college": "education",
+    "kindergarten": "education",
+    "academy": "education",
+    "educational institution": "education",
+
+    # --- Healthcare ---
+    "hospital": "healthcare",
+    "clinic": "healthcare",
+    "medical": "healthcare",
+    "healthcare": "healthcare",
+    "pharma": "pharmaceuticals",
+    "pharmaceutical": "pharmaceuticals",
+
+    # --- Manufacturing / Industry ---
+    "manufacturing": "manufacturing",
+    "factory": "manufacturing",
+    "industrial": "manufacturing",
+    "production": "manufacturing",
+
+    # --- Retail / Commerce ---
+    "retail": "retail",
+    "wholesale": "retail",
+    "store": "retail",
+    "e-commerce": "e-commerce",
+    "ecommerce": "e-commerce",
+    "online shop": "e-commerce",
+    "marketplace": "e-commerce",
+
+    # --- Public / Government ---
+    "government": "public sector",
+    "public sector": "public sector",
+    "municipality": "public sector",
+    "ministry": "public sector",
+
+    # --- IT companies (use with extra caution) ---
+    # Add ONLY if explicitly stated as the company's business domain
+    "software company": "software industry",
+    "it company": "software industry",
+    "saas provider": "software industry",
+}
+
+
+def normalize_domains(domains, data):
+    text = json.dumps(data, ensure_ascii=False).lower()
+    result = set()
+
+    # 1️⃣ If GPT provided domains, accept ONLY if they are industries
+    if isinstance(domains, list):
+        for d in domains:
+            d_low = d.lower()
+            for industry in INDUSTRY_KEYWORDS.values():
+                if industry in d_low:
+                    result.add(industry)
+
+    # 2️⃣ Fallback: search within CV text / companies
+    for key, industry in INDUSTRY_KEYWORDS.items():
+        if key in text:
+            result.add(industry)
+
+    return [d.title() for d in sorted(result)]
+
+def normalize_project_domains(project: dict) -> list[str]:
+    if not isinstance(project, dict):
+        return []
+    return normalize_domains(project.get("domains", []), project)
+
+# ===============================================
+# Main entry point
 # ===============================================
 
 def postprocess_filled_cv(data: dict, original_text: str = "") -> dict:
-    data["languages"] = unify_languages(data.get("languages", []), original_text)
+    # If projects arrived as a string, parse them back into a list
+    if isinstance(data.get("projects_experience"), str):
+        import json, ast
+
+        try:
+            data["projects_experience"] = json.loads(data["projects_experience"].replace("'", '"'))
+        except Exception:
+            try:
+                data["projects_experience"] = ast.literal_eval(data["projects_experience"])
+            except Exception:
+                data["projects_experience"] = []
+
+    # Apply duration normalization/fixes
     data["projects_experience"] = unify_durations(data.get("projects_experience", []))
+    data["projects_experience"] = fix_open_date_ranges(data["projects_experience"])
+
+    # Skills
     data["hard_skills"] = clean_duplicates_in_skills(data.get("hard_skills", {}))
 
-    # 🧠 Только если skills_overview отсутствует или пуст — пересчитать
-    if not data.get("skills_overview"):
-        flat_skills = split_skills_overview_rows(data.get("skills_overview", []))
-        data["skills_overview"] = generate_skills_overview(flat_skills)
+    # Skills overview
+    flat_skills = split_skills_overview_rows(data.get("skills_overview", []))
+    reconstructed = generate_skills_overview(flat_skills)
+    data["skills_overview"] = filter_skills_overview(reconstructed)
 
+    # Project domains (hybrid: GPT output + fallback via keywords per project)
+    for project in data.get("projects_experience", []):
+        if not isinstance(project, dict):
+            continue
+        project["domains"] = normalize_project_domains(project)
+
+    # Global domains: derived ONLY from project domains (no global extraction)
+    project_domains = []
+    for p in data.get("projects_experience", []):
+        if isinstance(p, dict) and isinstance(p.get("domains"), list):
+            project_domains.extend([str(x) for x in p.get("domains", []) if str(x).strip()])
+    combined = sorted({d.strip().title() for d in project_domains if str(d).strip()})
+    data["domains"] = combined
+
+    # Format responsibilities for each project
+    for project in data.get("projects_experience", []):
+        if isinstance(project, dict) and "responsibilities" in project:
+            project["responsibilities"] = format_responsibilities(project.get("responsibilities", []))
+
+    # Clean text fields
+    data = clean_text_fields(data)
+
+    # Safety net: if it's a string again after processing, parse again
+    if isinstance(data.get("projects_experience"), str):
+        import ast
+        try:
+            data["projects_experience"] = ast.literal_eval(data["projects_experience"])
+        except Exception:
+            data["projects_experience"] = []
+
+    # Auto-fill role and duration if GPT missed them
+    for project in data.get("projects_experience", []):
+        title = project.get("project_title", "") or ""
+        overview = project.get("overview", "") or ""
+        tech = " ".join(project.get("tech_stack", [])) if project.get("tech_stack") else ""
+
+        combined_text = " ".join([title, overview, tech])
+
+        # --- ROLE (only from the current project) ---
+        if not project.get("role"):
+            role_match = re.search(
+                r"\b(CEO|Lead|Senior|Junior|Data|BI|Cloud|AI|ML|DevOps)?\s*"
+                r"(Developer|Engineer|Architect|Consultant|Manager|Analyst|Director|Specialist)\b",
+                combined_text,
+                re.I,
+            )
+            if role_match:
+                parts = [p for p in role_match.groups() if p]
+                project["role"] = " ".join(parts).strip().title()
+            else:
+                project["role"] = ""
+
+        # --- DURATION (only from the current project's text) ---
+        if not project.get("duration"):
+            duration_match = re.search(
+                r"(\d{1,2}\.\d{2}|\b(19|20)\d{2}\b)\s*[–-]\s*(Jetzt|Heute|Present|\d{1,2}\.\d{2}|\b(19|20)\d{2}\b)",
+                combined_text,
+            )
+            if duration_match:
+                start = duration_match.group(1)
+                end = duration_match.group(3)
+                project["duration"] = f"{start} – {end}"
+            else:
+                project["duration"] = ""
     return data
 
+
 # ===============================================
-# 🧼 Очистка текстов и проверка структуры
+# Text cleanup and structure validation
 # ===============================================
 
 def clean_text_fields(data):
-    """Рекурсивно очищает строки от мусора и спецсимволов."""
+    """Recursively cleans strings from noise and special symbols."""
     if isinstance(data, dict):
         return {k: clean_text_fields(v) for k, v in data.items()}
     elif isinstance(data, list):
@@ -235,9 +499,8 @@ def clean_text_fields(data):
         return text
     return data
 
-
 def validate_cv_schema(cv_json):
-    """Проверяет, что все ключевые разделы присутствуют."""
+    """Checks that all key sections are present."""
     required_fields = [
         "profile_summary",
         "education",
@@ -250,3 +513,82 @@ def validate_cv_schema(cv_json):
     missing = [f for f in required_fields if f not in cv_json or not cv_json[f]]
     return missing
 
+
+# ===============================================
+# 📝 Responsibilities formatting
+# ===============================================
+
+def format_responsibilities(responsibilities):
+    """
+    Format responsibilities into detailed, structured bullet points.
+
+    Goals:
+    - Break long paragraphs into informative bullet points (70–100 words each)
+    - Preserve maximum information and context
+    - Maintain readability through structure
+    - Final target: up to 5 bullets, ~350–500 words per project (only if source text supports it)
+    """
+    if not responsibilities:
+        return []
+    
+    if isinstance(responsibilities, str):
+        responsibilities = [responsibilities]
+    
+    if not isinstance(responsibilities, list):
+        return []
+    
+    formatted = []
+    
+    for item in responsibilities:
+        if not isinstance(item, str):
+            continue
+            
+        item = item.strip()
+        if not item:
+            continue
+        
+        word_count = len(item.split())
+
+        # If the item is already in the target range (65-110 words), keep it as-is
+        if 65 <= word_count <= 110:
+            formatted.append(item)
+            continue
+
+        # If it's shorter than 65 words, keep it (we cannot safely expand it)
+        if word_count < 65:
+            formatted.append(item)
+            continue
+        
+        # Split long text into sentences
+        sentences = re.split(r'(?<=[.!?])\s+', item)
+        
+        current_bullet = []
+        current_word_count = 0
+        
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+                
+            sentence_words = len(sentence.split())
+            
+            # If adding the sentence won't exceed 110 words
+            if current_word_count + sentence_words <= 110:
+                current_bullet.append(sentence)
+                current_word_count += sentence_words
+            else:
+                # Save accumulated content and start a new bullet
+                if current_bullet:
+                    formatted.append(' '.join(current_bullet))
+                current_bullet = [sentence]
+                current_word_count = sentence_words
+        
+        # Add the final accumulated bullet
+        if current_bullet:
+            formatted.append(' '.join(current_bullet))
+    
+    # Limit to 5 bullets
+    if len(formatted) > 5:
+        formatted = formatted[:5]
+    
+    return formatted
