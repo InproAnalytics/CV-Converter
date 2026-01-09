@@ -1,9 +1,0 @@
-{
-  "name": "Иван",
-  "email": "ivan@example.com",
-  "skills": [
-    "Python",
-    "FastAPI",
-    "OpenAI"
-  ]
-}

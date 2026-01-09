@@ -1,3 +1,8 @@
 openai
-pdfplumber
 python-dotenv
+reportlab==4.4.4
+PyMuPDF
+langdetect
+streamlit
+pandas
+requests
