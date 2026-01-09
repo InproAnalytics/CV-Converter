@@ -1,0 +1,14 @@
+# Игнорируем всё, кроме шрифтов
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+data_output/
+*.pdf
+*.txt
+debug/
+
+# Разрешаем папку fonts/
+!fonts/
+!fonts/*.ttf

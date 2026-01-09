@@ -1,0 +1,9 @@
+# Local dev settings to prevent file_uploader from failing with 403 in some browsers/webviews.
+# In production, it's better to enable these again.
+
+[server]
+enableCORS = false
+enableXsrfProtection = false
+
+[browser]
+gatherUsageStats = false
