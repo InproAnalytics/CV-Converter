@@ -117,7 +117,9 @@ if uploaded_file:
 
             result = holder.get("value") or {}
 
-            if "raw_response" in result and result["raw_response"]:
+            if isinstance(result, dict) and result.get("error"):
+                st.error(f"❌ GPT Fehler: {result['error']}")
+            elif "raw_response" in result and result["raw_response"]:
                 status_text.text("🧩 Daten werden verarbeitet…")
                 filled_json = json.loads(result["raw_response"])
                 filled_json = postprocess_filled_cv(filled_json, raw_text)

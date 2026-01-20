@@ -13,6 +13,37 @@ load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 logging.basicConfig(level=logging.INFO)
 
+
+def _should_retry_with_default_temperature(error: Exception) -> bool:
+  msg = str(error).lower()
+  return (
+    "temperature" in msg
+    and (
+      "only the default (1) value is supported" in msg
+      or "unsupported_value" in msg
+    )
+  )
+
+
+def _chat_create(*, model: str, messages: list, temperature: float | None = None):
+  # Some models (e.g., gpt-5*) only support the default temperature.
+  # Best behavior: don't send the parameter at all to avoid an extra 400 + retry.
+  if temperature is not None and isinstance(model, str) and model.startswith("gpt-5"):
+    temperature = None
+
+  params = {"model": model, "messages": messages}
+  if temperature is not None:
+    params["temperature"] = temperature
+
+  try:
+    return client.chat.completions.create(**params)
+  except Exception as e:
+    if temperature is not None and _should_retry_with_default_temperature(e):
+      logging.info("ℹ️ Retrying OpenAI call with default temperature=1 (model restriction)")
+      params["temperature"] = 1
+      return client.chat.completions.create(**params)
+    raise
+
 # ============================================================
 # 🧠 Hauptfunktion zum Aufruf von GPT
 # ============================================================
@@ -203,13 +234,13 @@ TEXT:
             "content": f"Use this structure strictly as your schema:\n{json.dumps(base_structure, ensure_ascii=False, indent=2)}"
         })
 
-  # --- API call
+    # --- API call
     try:
-        response = client.chat.completions.create(
+        response = _chat_create(
             model=model,
             messages=messages,
-      temperature=0.1,
-    )
+            temperature=0.1,
+        )
         raw = response.choices[0].message.content
         return {"raw_response": raw, "mode": mode, "prompt": prompt}
 
@@ -259,7 +290,7 @@ def _call_gpt_and_parse(prompt: str, model: str = "gpt-4o-mini") -> dict:
             {"role": "system", "content": "You are an expert CV parser."},
             {"role": "user", "content": prompt},
         ]
-        response = client.chat.completions.create(
+        response = _chat_create(
             model=model,
             messages=messages,
             temperature=0.1,
@@ -429,10 +460,10 @@ CV_TEXT:
             {"role": "system", "content": "You are an expert CV parser."},
             {"role": "user", "content": prompt},
         ]
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0.1
+        response = _chat_create(
+          model=model,
+          messages=messages,
+          temperature=0.1,
         )
         raw = response.choices[0].message.content or ""
         return {"success": True, "text": raw, "raw_response": raw}
@@ -615,10 +646,10 @@ STRUCTURED CV DATA:
             {"role": "user", "content": prompt}, 
         ]
 
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0.1
+        response = _chat_create(
+          model=model,
+          messages=messages,
+          temperature=0.1,
         )
 
         raw = response.choices[0].message.content.strip()
