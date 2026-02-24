@@ -1,0 +1,10 @@
+openai
+python-dotenv
+reportlab==4.4.4
+PyMuPDF
+langdetect
+streamlit
+pandas
+requests
+pdfreader
+PyPDF2
