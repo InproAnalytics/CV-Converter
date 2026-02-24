@@ -1,7 +1,7 @@
 import os
 import json
-import ast
 import logging
+from typing import Any, Dict, Optional
 from dotenv import load_dotenv
 from openai import OpenAI
 from postprocess import safe_parse_if_str
@@ -12,6 +12,42 @@ from postprocess import safe_parse_if_str
 load_dotenv()
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 logging.basicConfig(level=logging.INFO)
+
+
+def _should_retry_with_default_temperature(error: Exception) -> bool:
+    msg = str(error).lower()
+    return (
+        "temperature" in msg
+        and (
+            "only the default (1) value is supported" in msg
+            or "only default (1)" in msg
+            or "does not support" in msg
+            or "unsupported_value" in msg
+            or "unsupported value" in msg
+        )
+    )
+
+
+def _chat_create(*, model: str, messages: list, temperature: Optional[float] = None):
+    # Some models (e.g., gpt-5*) only support the default temperature.
+    # Best behavior: don't send the parameter at all to avoid an extra 400 + retry.
+    if temperature is not None and isinstance(model, str) and model.startswith("gpt-5"):
+        temperature = None
+
+    params = {"model": model, "messages": messages}
+    if temperature is not None:
+        params["temperature"] = temperature
+
+    try:
+        return client.chat.completions.create(**params)
+    except Exception as e:
+        # If the model rejects non-default temperature values, retry without sending the parameter.
+        # This is safer than forcing temperature=1 because some endpoints reject the param entirely.
+        if _should_retry_with_default_temperature(e) and "temperature" in params:
+            logging.info("ℹ️ Retrying OpenAI call without temperature (model restriction)")
+            params.pop("temperature", None)
+            return client.chat.completions.create(**params)
+        raise
 
 # ============================================================
 # 🧠 Hauptfunktion zum Aufruf von GPT
@@ -203,54 +239,20 @@ TEXT:
             "content": f"Use this structure strictly as your schema:\n{json.dumps(base_structure, ensure_ascii=False, indent=2)}"
         })
 
-  # --- API call
+    # --- API call
     try:
-        response = client.chat.completions.create(
+        response = _chat_create(
             model=model,
             messages=messages,
-      temperature=0.1,
-    )
+            temperature=0.1,
+        )
         raw = response.choices[0].message.content
         return {"raw_response": raw, "mode": mode, "prompt": prompt}
 
     except Exception as e:
         logging.error(f"❌ GPT error: {e}")
         return {"raw_response": "", "error": str(e)}
-# ============================================================
-#  
-# ============================================================
 
-def safe_json_parse(raw):
-    """
-    Safely converts a string or object into a Python dict/list.
-
-    If a string contains JSON embedded inside a string (e.g. "[{...}]"),
-    it attempts to unwrap it.
-    """
-    if isinstance(raw, dict):
-        return raw
-    if isinstance(raw, list):
-        return raw
-    if not isinstance(raw, str):
-        return {}
-
-    try:
-        # 🧠 Try standard JSON
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        # 🧩 Sometimes GPT uses single quotes
-        try:
-            return json.loads(raw.replace("'", '"'))
-        except Exception:
-            pass
-        # 🧩 Sometimes the string is a Python literal representation
-        try:
-            return ast.literal_eval(raw)
-        except Exception as e:
-            logging.warning(f"⚠️ safe_json_parse failed: {e}")
-            return {}
-
-# ============================================================
 
 def _call_gpt_and_parse(prompt: str, model: str = "gpt-4o-mini") -> dict:
     """Single GPT call + safe JSON parsing (shared helper for JSON responses)."""
@@ -259,7 +261,7 @@ def _call_gpt_and_parse(prompt: str, model: str = "gpt-4o-mini") -> dict:
             {"role": "system", "content": "You are an expert CV parser."},
             {"role": "user", "content": prompt},
         ]
-        response = client.chat.completions.create(
+        response = _chat_create(
             model=model,
             messages=messages,
             temperature=0.1,
@@ -429,10 +431,10 @@ CV_TEXT:
             {"role": "system", "content": "You are an expert CV parser."},
             {"role": "user", "content": prompt},
         ]
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0.1
+        response = _chat_create(
+          model=model,
+          messages=messages,
+          temperature=0.1,
         )
         raw = response.choices[0].message.content or ""
         return {"success": True, "text": raw, "raw_response": raw}
@@ -498,46 +500,6 @@ PROJECTS_TEXT:
 """
     return _call_gpt_and_parse(prompt, model=model)
 
-def run_stage_based_parsing(text: str, model: str = "gpt-4o-mini") -> dict:
-    """
-    Stage-based pipeline:
-    1. Extract general CV info without projects
-    2. Extract raw text for relevant projects
-    3. Structurize the extracted project text into JSON
-    4. Merge into one final result JSON
-    """
-
-    try:
-      # Step 1: extract general CV info (no projects)
-        step1 = gpt_extract_cv_without_projects(text, model=model)
-        if not step1.get("success"):
-            return {"success": False, "error": "Step 1 failed: general CV info"}
-
-      # Step 2: extract raw projects text
-        step2 = gpt_extract_projects_text(text, model=model)
-        if not step2.get("success"):
-            return {"success": False, "error": "Step 2 failed: projects text"}
-
-      # Step 3: convert projects text into structured JSON
-        step3 = gpt_structurize_projects_from_text(step2["text"], model=model)
-        if not step3.get("success"):
-            return {"success": False, "error": "Step 3 failed: project structuring"}
-
-      # Merge results
-        result_json = step1["json"]
-        result_json["projects_experience"] = step3["json"].get("projects_experience", [])
-
-        return {
-            "success": True,
-            "json": result_json,
-            "raw_projects_text": step2["text"]
-        }
-
-    except Exception as e:
-        logging.error(f"❌ Stage-based parsing pipeline failed: {e}")
-        return {"success": False, "error": str(e)}
-
-from typing import Dict, Any
 def gpt_generate_text_cv_summary(cv_data: Dict[str, Any], model: str = "gpt-4o-mini") -> dict:
     """
     Generates a concise CV summary including:
@@ -615,10 +577,10 @@ STRUCTURED CV DATA:
             {"role": "user", "content": prompt}, 
         ]
 
-        response = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0.1
+        response = _chat_create(
+          model=model,
+          messages=messages,
+          temperature=0.1,
         )
 
         raw = response.choices[0].message.content.strip()
