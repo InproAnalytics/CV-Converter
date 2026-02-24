@@ -1,4 +1,4 @@
-# Игнорируем всё, кроме шрифтов
+# Ignore local env, caches, and generated outputs
 .venv/
 __pycache__/
 *.pyc
@@ -9,6 +9,6 @@ data_output/
 *.txt
 debug/
 
-# Разрешаем папку fonts/
+# Allow fonts/
 !fonts/
 !fonts/*.ttf
