@@ -250,30 +250,10 @@ def make_overview_box(data, styles):
     rest = [k for k in hard_skills.keys() if k not in desired_order]
     order = desired_order + rest
 
-    for key in order:
-        tools = hard_skills.get(key, [])
-        if not tools:
-            continue
-
-        # Normalize list
-        tool_names = []
-        for t in tools:
-            if isinstance(t, dict):
-                name = (t.get("name") or "").strip()
-                if name:
-                    tool_names.append(name)
-            elif isinstance(t, str):
-                s = t.strip()
-                if s:
-                    tool_names.append(s)
-
-        if not tool_names:
-            continue
-
     # Max number of items per line
     MAX_ITEMS = 12
 
-    for key in desired_order:
+    for key in order:
         tools = hard_skills.get(key, [])
         if not tools:
             continue

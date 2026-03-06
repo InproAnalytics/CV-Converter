@@ -252,7 +252,7 @@ def safe_json_parse(raw):
 
 # ============================================================
 
-def _call_gpt_and_parse(prompt: str, model: str = "gpt-4o-mini") -> dict:
+def _call_gpt_and_parse(prompt: str, model: str = "gpt-4.1-mini") -> dict:
     """Single GPT call + safe JSON parsing (shared helper for JSON responses)."""
     try:
         messages = [
@@ -272,7 +272,7 @@ def _call_gpt_and_parse(prompt: str, model: str = "gpt-4o-mini") -> dict:
         return {"success": False, "json": {}, "raw_response": ""}
 
 
-def gpt_extract_cv_without_projects(text: str, model: str = "gpt-4o-mini") -> dict:
+def gpt_extract_cv_without_projects(text: str, model: str = "gpt-4.1-mini") -> dict:
     """Extracts all CV fields except projects_experience (keeps it as [])."""
     prompt = f"""
 TASK: Extract a structured CV JSON from the text, but DO NOT extract any projects.
@@ -381,7 +381,7 @@ TEXT:
     return _call_gpt_and_parse(prompt, model=model)
 
 
-def gpt_extract_projects_text(text: str, model: str = "gpt-4o-mini") -> dict:
+def gpt_extract_projects_text(text: str, model: str = "gpt-4.1-mini") -> dict:
     """Returns one large projects-only text, separated by === PROJECT N === markers."""
     prompt = f"""
 TASK: Extract ONLY project sections from the following CV text.
@@ -441,7 +441,7 @@ CV_TEXT:
         return {"success": False, "text": "", "raw_response": ""}
 
 
-def gpt_structurize_projects_from_text(projects_text: str, model: str = "gpt-4o-mini") -> dict:
+def gpt_structurize_projects_from_text(projects_text: str, model: str = "gpt-4.1-mini") -> dict:
     """Converts === PROJECT N === text blocks into the target schema's projects_experience."""
     prompt = f"""
 TASK: Convert the following PROJECTS text into structured JSON objects.
@@ -498,7 +498,7 @@ PROJECTS_TEXT:
 """
     return _call_gpt_and_parse(prompt, model=model)
 
-def run_stage_based_parsing(text: str, model: str = "gpt-4o-mini") -> dict:
+def run_stage_based_parsing(text: str, model: str = "gpt-4.1-mini") -> dict:
     """
     Stage-based pipeline:
     1. Extract general CV info without projects
@@ -538,7 +538,7 @@ def run_stage_based_parsing(text: str, model: str = "gpt-4o-mini") -> dict:
         return {"success": False, "error": str(e)}
 
 from typing import Dict, Any
-def gpt_generate_text_cv_summary(cv_data: Dict[str, Any], model: str = "gpt-4o-mini") -> dict:
+def gpt_generate_text_cv_summary(cv_data: Dict[str, Any], model: str = "gpt-4.1-mini") -> dict:
     """
     Generates a concise CV summary including:
     - Relevant Experience (2–5 key projects, 170–180 words total, including project titles in headers)
@@ -635,3 +635,76 @@ STRUCTURED CV DATA:
             "output_text": "",
             "error": str(e)
         }
+
+
+# ============================================================
+# Optimized single-call extraction (v2)
+# ============================================================
+
+_CV_SCHEMA_V2 = {
+    "full_name": "",
+    "title": "",
+    "education": [{"degree": "", "institution": "", "year": ""}],
+    "languages": [{"language": "", "level": ""}],
+    "profile_summary": "",
+    "domains": [],
+    "hard_skills": {
+        "programming_languages": [], "backend": [], "frontend": [],
+        "databases": [], "data_engineering": [], "etl_tools": [],
+        "bi_tools": [], "analytics": [], "cloud_platforms": [],
+        "devops_iac": [], "ci_cd_tools": [], "containers_orchestration": [],
+        "monitoring_security": [], "security": [], "ai_ml_tools": [],
+        "infrastructure_os": [], "other_tools": []
+    },
+    "projects_experience": [{
+        "project_title": "", "company": "", "role": "", "duration": "",
+        "responsibilities": [], "tech_stack": [], "domains": []
+    }],
+    "skills_overview": [{"category": "", "tools": [], "years_of_experience": ""}],
+    "website": ""
+}
+
+
+def ask_chatgpt_v2(text: str, model: str = "gpt-4.1-mini") -> dict:
+    """Optimized single-call CV extraction with compressed prompt."""
+    schema_str = json.dumps(_CV_SCHEMA_V2, ensure_ascii=False, separators=(",", ":"))
+
+    prompt = f"""Extract structured data as JSON. Input may be any language; output English only.
+SCHEMA:{schema_str}
+RULES:
+-Valid JSON only. No markdown/comments.
+-Never invent data. Unknown=""or[].
+-Dates:copy exactly,no reformatting.
+-education:all entries,exact degree/institution/year.
+-languages:only explicitly stated+levels.No inference.
+-profile_summary:third-person technical,60-70 words max.
+-hard_skills:each tool in one category only.
+-projects_experience:ALL projects.company=name only,no city.responsibilities:exactly 3 bullets,12-14 words each,action verb+method.tech_stack:max 5 tools.domains:max 1 industry,[]if unclear.
+-skills_overview:all tools by category.years_of_experience="".
+-All values proper JSON types.
+TEXT:{text}"""
+
+    messages = [
+        {"role": "system", "content": "Expert CV parser. Extract faithfully. Never invent."},
+        {"role": "user", "content": prompt},
+    ]
+
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0.1,
+        )
+        raw = response.choices[0].message.content
+
+        logging.info(
+            "GPT usage: prompt=%s completion=%s total=%s",
+            response.usage.prompt_tokens,
+            response.usage.completion_tokens,
+            response.usage.total_tokens,
+        )
+
+        return {"raw_response": raw, "mode": "details_v2", "prompt": prompt}
+    except Exception as e:
+        logging.error(f"GPT v2 error: {e}")
+        return {"raw_response": "", "error": str(e)}

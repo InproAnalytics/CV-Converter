@@ -1,10 +1,6 @@
 import os
 import re
 import fitz  # PyMuPDF
-from langdetect import detect, DetectorFactory
-from chatgpt_client import ask_chatgpt
-
-DetectorFactory.seed = 0  # Für stabile Sprachenerkennung
 
 # ============================================================
 # 1️⃣ PDF → Text Extraktion (seitenweise)
@@ -154,48 +150,70 @@ def normalize_structure(text: str) -> str:
     return text
 
 # ============================================================
-# 4️⃣ Hauptfunktion zur Vorbereitung des CV-Texts
+# 4️⃣ Deterministic input compression (token reduction)
+# ============================================================
+def clean_cv_text(text: str) -> str:
+    """
+    Compress text for LLM input: remove noise while preserving all semantic content.
+    - Removes page markers, long URLs, duplicate lines, closing section tags.
+    - Removes German context hints (no value for English extraction).
+    - Collapses whitespace and empty lines.
+    """
+    # Remove page markers (English/German)
+    text = re.sub(r"(?i)\b(page|seite)\s+\d+\s+(of|von)\s+\d+\b", "", text)
+
+    # Remove long URLs (>40 chars) — they waste tokens, GPT doesn't need them
+    text = re.sub(r"https?://\S{40,}", "", text)
+
+    # Remove German context hints injected by clean_text()
+    text = re.sub(r"Kontext:.*?\n", "", text)
+
+    # Remove closing section tags — opening tags are sufficient for GPT
+    text = re.sub(r"\[/[A-Z_]+\]", "", text)
+
+    # Remove decorative separator lines (--- or ===)
+    text = re.sub(r"^[-–—=]{3,}\s*$", "", text, flags=re.MULTILINE)
+
+    # Deduplicate consecutive identical lines
+    lines = text.split("\n")
+    deduped = []
+    prev = None
+    for line in lines:
+        stripped = line.strip()
+        if stripped and stripped == prev:
+            continue
+        deduped.append(stripped)
+        prev = stripped
+    text = "\n".join(deduped)
+
+    # Collapse multiple empty lines into one
+    text = re.sub(r"\n{3,}", "\n", text)
+
+    # Collapse multiple spaces
+    text = re.sub(r"[ \t]+", " ", text)
+
+    # Remove remaining empty lines
+    text = "\n".join(line for line in text.split("\n") if line.strip())
+
+    return text.strip()
+
+
+# ============================================================
+# 5️⃣ Hauptfunktion zur Vorbereitung des CV-Texts
 # ============================================================
 def prepare_cv_text(pdf_path: str, cache_dir="data_output") -> tuple[str, str]:
     """
-    Extrahiert Text aus dem PDF, übersetzt ihn bei Bedarf, markiert Datumsangaben,
-    bereinigt die Struktur und bereitet den Text für GPT vor. Gibt zurück:
-    (den normalisierten Text, den Originaltext).
+    Extracts text from the PDF, normalizes structure, and prepares it for GPT.
+    Translation is handled by the GPT extraction prompt itself (multilingual input supported).
+    Returns: (prepared_text, raw_text).
     """
     import os
-    from langdetect import detect
 
     os.makedirs(cache_dir, exist_ok=True)
 
     pages = extract_text_by_page(pdf_path)
     raw_text = "\n\n".join(pages)
 
-    try:
-        detected_lang = detect(raw_text)
-    except Exception:
-        detected_lang = "en"
-
-    if detected_lang != "en":
-        translation_prompt = f"""
-Translate this CV text from German to English word-by-word, preserving the exact line structure.
-Do NOT split or merge projects. Do NOT add numbering or new sections.
-Preserve ALL original formatting and project boundaries.
-TEXT:
-{raw_text[:15000]}
-"""
-        result = ask_chatgpt(translation_prompt)
-
-        if isinstance(result, dict) and "raw_response" in result:
-            raw_text = result["raw_response"]
-        elif isinstance(result, str):
-            raw_text = result
-
-        raw_text = re.sub(r"(?i)\b(sprachen|sprachkenntnisse)\b", "Languages", raw_text)
-        raw_text = re.sub(r"(?i)\b(ausbildung|bildung)\b", "Education", raw_text)
-        raw_text = re.sub(r"(?i)\b(berufserfahrung|erfahrung|projekte|projects?)\b", "Experience", raw_text)
-        raw_text = re.sub(r"(?i)\b(kenntnisse|skills|kompetenzen|technologien|tools)\b", "Skills", raw_text)
-
-    # Skip date tagging as per user request
     tagged_text = raw_text
     tagged_text = merge_project_blocks(tagged_text)
     

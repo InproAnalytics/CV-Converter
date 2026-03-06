@@ -5,8 +5,8 @@ import threading
 import copy
 import hashlib
 
-from pdf_processor import prepare_cv_text
-from chatgpt_client import ask_chatgpt
+from pdf_processor import prepare_cv_text, clean_cv_text
+from chatgpt_client import ask_chatgpt_v2
 from postprocess import postprocess_filled_cv
 from cv_pdf_generator import create_pretty_first_section
 
@@ -367,13 +367,14 @@ if uploaded_file:
 
     st.success(f"✅ Datei hochgeladen: {uploaded_file.name}")
 
-    st.session_state.setdefault("selected_model", "gpt-4o-mini")
+    st.session_state.setdefault("selected_model", "gpt-4.1-mini")
     MODEL_OPTIONS = {
-        "Schnell (geringere Qualität)": "gpt-4o-mini",
-        "Langsamer (Genauer)": "gpt-5-mini",
+        "Schnell (geringere Qualität)": "gpt-4.1-mini",
+        "Standard (Genauer)": "gpt-4.1-mini",
     }
     st.radio("Modell auswählen", options=list(MODEL_OPTIONS.keys()), key="model_label")
-    st.session_state["selected_model"] = MODEL_OPTIONS[st.session_state["model_label"]]
+    label = st.session_state.get("model_label", "Schnell (geringere Qualität)")
+    st.session_state["selected_model"] = MODEL_OPTIONS.get(label, "gpt-4.1-mini")
 
     if st.button("🚀 Konvertierung starten"):
         progress_box = st.container()
@@ -385,38 +386,42 @@ if uploaded_file:
         time_info = st.empty()
         start_time = time.time()
 
+        timing = {}
         try:
             status_text.text("📖 Text wird extrahiert…")
+            t0 = time.time()
             prepared_text, raw_text = prepare_cv_text(pdf_path)
+            print("DEBUG prepared_text length (chars):", len(prepared_text))
+            timing["extract"] = time.time() - t0
             st.session_state["raw_text"] = raw_text
             st.session_state["pdf_path"] = pdf_path
-
-            for i in range(1, 26, 2):
-                time.sleep(0.05)
-                progress.progress(i)
-                progress_value = i
-                time_info.text(f"⏱ {round(time.time() - start_time, 1)} Sekunden vergangen")
+            progress.progress(15)
+            time_info.text(f"⏱ {round(time.time() - start_time, 1)} Sekunden vergangen")
 
             status_text.text("🤖 Anfrage wird an ChatGPT gesendet…")
+            prepared_text = clean_cv_text(prepared_text)
             holder = {"value": None, "error": None}
             selected_model = st.session_state["selected_model"]
 
             def _run_gpt():
                 try:
-                    holder["value"] = ask_chatgpt(prepared_text, mode="details", model=selected_model)
+                    holder["value"] = ask_chatgpt_v2(prepared_text, model=selected_model)
                 except Exception as e:
                     holder["error"] = e
 
+            t0_gpt = time.time()
             t = threading.Thread(target=_run_gpt, daemon=True)
             t.start()
 
             with st.spinner("Modell arbeitet…"):
                 while t.is_alive():
                     elapsed = time.time() - start_time
-                    progress_value = min(progress_value + 1, 95)
+                    progress_value = min(progress_value + 1, 90)
                     progress.progress(progress_value)
                     time_info.text(f"⏱ {round(elapsed, 1)} Sekunden vergangen")
                     time.sleep(0.15)
+
+            timing["gpt"] = time.time() - t0_gpt
 
             if holder.get("error"):
                 raise holder["error"]
@@ -425,8 +430,11 @@ if uploaded_file:
 
             if "raw_response" in result and result["raw_response"]:
                 status_text.text("🧩 Daten werden verarbeitet…")
+                progress.progress(92)
+                t0_post = time.time()
                 filled_json = json.loads(result["raw_response"])
                 filled_json = postprocess_filled_cv(filled_json, raw_text)
+                timing["postprocess"] = time.time() - t0_post
 
                 if not filled_json.get("title"):
                     filled_json["title"] = filled_json.get("position") or filled_json.get("role") or ""
@@ -435,13 +443,9 @@ if uploaded_file:
                 st.session_state["edited_json"] = copy.deepcopy(filled_json)
                 st.session_state["json_bytes"] = json.dumps(filled_json, indent=2, ensure_ascii=False).encode("utf-8")
 
-                for i in range(56, 76, 2):
-                    time.sleep(0.05)
-                    progress.progress(i)
-                    progress_value = i
-                    time_info.text(f"⏱ {round(time.time() - start_time, 1)} Sekunden vergangen")
-
                 status_text.text("📝 PDF wird erstellt…")
+                progress.progress(95)
+                t0_pdf = time.time()
                 output_dir = "data_output"
                 os.makedirs(output_dir, exist_ok=True)
 
@@ -452,20 +456,24 @@ if uploaded_file:
                 position_tc = position.title() if position else "Unbekannte Position"
                 pdf_name = f"CV Inpro {first_name} {position_tc}"
 
-                for i in range(76, 96, 2):
-                    time.sleep(0.03)
-                    progress.progress(i)
-                    progress_value = i
-                    time_info.text(f"⏱ {round(time.time() - start_time, 1)} Sekunden vergangen")
-
                 pdf_path_out = create_pretty_first_section(filled_json, output_dir=output_dir, prefix=pdf_name)
                 with open(pdf_path_out, "rb") as f:
                     st.session_state["pdf_bytes"] = f.read()
+                timing["pdfgen"] = time.time() - t0_pdf
 
                 st.session_state["pdf_name"] = pdf_name
                 st.session_state["last_pdf_fingerprint"] = _fingerprint(_remove_empty_fields(filled_json))
                 st.session_state["pdf_needs_refresh"] = False
                 progress.progress(100)
+
+                timing["total"] = time.time() - start_time
+                st.info(
+                    f"Timing: extract={timing['extract']:.1f}s | "
+                    f"GPT={timing['gpt']:.1f}s | "
+                    f"postprocess={timing['postprocess']:.1f}s | "
+                    f"PDF={timing['pdfgen']:.1f}s | "
+                    f"total={timing['total']:.1f}s"
+                )
             else:
                 st.error("⚠️ Das Modell hat keine Daten zurückgegeben.")
         except Exception as e:
@@ -919,7 +927,7 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
                 try:
                     summary_result = gpt_generate_text_cv_summary(
                         cv_data=cv_data_for_summary,
-                        model="gpt-4o-mini"
+                        model="gpt-4.1-mini"
                     )
                     if summary_result.get("success") and summary_result.get("output_text"):
                         st.session_state["v3_summary_text"] = summary_result["output_text"]
@@ -937,6 +945,85 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
                 disabled=False,
                 key="v3_summary_area",
             )
+
+        # -------------------------
+        # Alignment Analysis (optional)
+        # -------------------------
+        from alignment import ENABLE_ALIGNMENT
+        if ENABLE_ALIGNMENT:
+            st.markdown("---")
+            st.subheader("🧾 Client Role Alignment (Optional)")
+            st.text_area(
+                "Paste client role description",
+                height=200,
+                key="role_description",
+            )
+            if st.button("Analyze Alignment", key="analyze_alignment_btn"):
+                role_desc = st.session_state.get("role_description", "").strip()
+                if not role_desc:
+                    st.warning("Please paste a role description before analyzing.")
+                else:
+                    from alignment import compute_alignment, render_alignment_pdf
+                    source_json = copy.deepcopy(st.session_state.get("edited_json", {}))
+                    alignment_summary = compute_alignment(source_json, role_desc)
+
+                    # Preserve originals
+                    st.session_state["cv_json_original"] = copy.deepcopy(source_json)
+                    st.session_state["pdf_bytes_original"] = st.session_state.get("pdf_bytes", b"")
+
+                    # Create aligned JSON
+                    aligned_json = copy.deepcopy(source_json)
+                    aligned_json["alignment_summary"] = alignment_summary
+                    st.session_state["cv_json_aligned"] = aligned_json
+
+                    # Create aligned PDF
+                    original_pdf = st.session_state.get("pdf_bytes", b"")
+                    if original_pdf:
+                        st.session_state["pdf_bytes_aligned"] = render_alignment_pdf(
+                            alignment_summary, original_pdf
+                        )
+                    st.success("Alignment analysis complete.")
+
+            # Show alignment result if available
+            if "cv_json_aligned" in st.session_state:
+                a = st.session_state["cv_json_aligned"].get("alignment_summary", {})
+                overall = a.get("overall_alignment", "unclear")
+                color_map = {
+                    "strong_match": "green",
+                    "partial_match": "orange",
+                    "weak_match": "red",
+                    "unclear": "gray",
+                }
+                st.markdown(
+                    f"**Overall Alignment:** "
+                    f":{color_map.get(overall, 'gray')}[{overall.replace('_', ' ').upper()}]"
+                )
+                must = a.get("must_have", {})
+                if must.get("matched"):
+                    st.markdown("**Must-have matched:**")
+                    for m in must["matched"]:
+                        txt = m["text"] if isinstance(m, dict) else str(m)
+                        ev = m.get("evidence", []) if isinstance(m, dict) else []
+                        ev_str = f" *({', '.join(ev[:5])})*" if ev else ""
+                        st.markdown(f"- :green[+] **{txt}**{ev_str}")
+                if must.get("missing"):
+                    st.markdown("**Must-have missing:**")
+                    for m in must["missing"]:
+                        txt = m["text"] if isinstance(m, dict) else str(m)
+                        st.markdown(f"- :red[-] {txt}")
+                nice = a.get("nice_to_have", {})
+                if nice.get("matched"):
+                    st.markdown("**Nice-to-have matched:**")
+                    for m in nice["matched"]:
+                        txt = m["text"] if isinstance(m, dict) else str(m)
+                        ev = m.get("evidence", []) if isinstance(m, dict) else []
+                        ev_str = f" *({', '.join(ev[:5])})*" if ev else ""
+                        st.markdown(f"- :green[+] **{txt}**{ev_str}")
+                if nice.get("missing"):
+                    st.markdown("**Nice-to-have missing:**")
+                    for m in nice["missing"]:
+                        txt = m["text"] if isinstance(m, dict) else str(m)
+                        st.markdown(f"- :red[-] {txt}")
 
         # -------------------------
         # Save + PDF
@@ -1035,21 +1122,48 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
 
     # Downloads
     pdf_name = st.session_state.get("pdf_name", "CV_Streamlit")
+    has_alignment = "cv_json_aligned" in st.session_state
 
-    st.download_button(
-        label="📘 JSON herunterladen",
-        data=st.session_state.get("json_bytes", b""),
-        file_name=f"{pdf_name}_result.json",
-        mime="application/json",
-        key="download_json",
-    )
+    col_orig, col_aligned = st.columns(2) if has_alignment else (st.container(), None)
 
-    if "pdf_bytes" in st.session_state:
+    with col_orig:
+        if has_alignment:
+            st.markdown("**Original**")
         st.download_button(
-            label="📄 PDF herunterladen",
-            data=st.session_state["pdf_bytes"],
-            file_name=f"{pdf_name}.pdf",
-            mime="application/pdf",
-            key="download_pdf",
-            disabled=st.session_state.get("pdf_needs_refresh", False),
+            label="📘 JSON herunterladen",
+            data=st.session_state.get("json_bytes", b""),
+            file_name=f"{pdf_name}_result.json",
+            mime="application/json",
+            key="download_json",
         )
+        if "pdf_bytes" in st.session_state:
+            st.download_button(
+                label="📄 PDF herunterladen",
+                data=st.session_state["pdf_bytes"],
+                file_name=f"{pdf_name}.pdf",
+                mime="application/pdf",
+                key="download_pdf",
+                disabled=st.session_state.get("pdf_needs_refresh", False),
+            )
+
+    if has_alignment and col_aligned is not None:
+        with col_aligned:
+            st.markdown("**Aligned**")
+            aligned_json_bytes = json.dumps(
+                st.session_state["cv_json_aligned"], indent=2, ensure_ascii=False
+            ).encode("utf-8")
+            st.download_button(
+                label="📘 Aligned JSON",
+                data=aligned_json_bytes,
+                file_name=f"{pdf_name}_aligned.json",
+                mime="application/json",
+                key="download_aligned_json",
+            )
+            if "pdf_bytes_aligned" in st.session_state:
+                st.download_button(
+                    label="📄 Aligned PDF",
+                    data=st.session_state["pdf_bytes_aligned"],
+                    file_name=f"{pdf_name}_aligned.pdf",
+                    mime="application/pdf",
+                    key="download_aligned_pdf",
+                )
