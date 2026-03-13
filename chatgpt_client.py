@@ -697,12 +697,7 @@ TEXT:{text}"""
         )
         raw = response.choices[0].message.content
 
-        logging.info(
-            "GPT usage: prompt=%s completion=%s total=%s",
-            response.usage.prompt_tokens,
-            response.usage.completion_tokens,
-            response.usage.total_tokens,
-        )
+
 
         return {"raw_response": raw, "mode": "details_v2", "prompt": prompt}
     except Exception as e:

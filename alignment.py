@@ -12,9 +12,7 @@ import fitz  # PyMuPDF — already a project dependency
 
 ENABLE_ALIGNMENT = True
 
-# ============================================================
 # Deterministic skill normalization
-# ============================================================
 
 _CANONICAL = {
     "amazon web services": "aws", "aws": "aws",
@@ -54,10 +52,7 @@ _SENIORITY_KEYWORDS = {
     "cto": 9, "ceo": 9,
 }
 
-# ============================================================
 # Concept map: high-level requirement phrases -> concrete tools
-# Deterministic, curated, no inference.
-# ============================================================
 
 CONCEPT_MAP = {
     "machine learning": [
@@ -239,9 +234,7 @@ _MATCH_STOP_WORDS = frozenset({
 })
 
 
-# ============================================================
 # Normalization helpers
-# ============================================================
 
 def _normalize(text):
     """Normalize text for matching: lowercase, strip noise, collapse whitespace."""
@@ -270,9 +263,7 @@ def _detect_seniority(text):
     return best_kw
 
 
-# ============================================================
 # Role description parser (deterministic)
-# ============================================================
 
 _MUST_HAVE_RE = re.compile(
     r"(?i)^[\s#*]*(must[\s\-]?have[s]?|required|requirements|mandatory|essential"
@@ -294,7 +285,6 @@ def _is_section_header(line):
     s = line.strip()
     if not s:
         return False
-    # Lines starting with bullet markers are never section headers
     if re.match(r'^[\-\u2022*\u00b7\u25aa\u2192>]', s):
         return False
     if s.endswith(":"):
@@ -342,7 +332,7 @@ def parse_role_description(text):
 
     lines = [l.strip() for l in text.strip().split("\n")]
 
-    # --- Role title ---
+    # Role title 
     for line in lines:
         if not line:
             continue
@@ -356,17 +346,14 @@ def parse_role_description(text):
                 result["role_title"] = line
                 break
 
-    # --- Seniority from title ---
     if result["role_title"]:
         result["seniority"] = _detect_seniority(result["role_title"])
 
-    # --- Section-based parsing ---
     current_section = None
     for line in lines:
         if not line:
             continue
 
-        # Must-have header
         if _MUST_HAVE_RE.match(line):
             current_section = "must_have"
             after_colon = line.split(":", 1)[1].strip() if ":" in line else ""
@@ -374,7 +361,6 @@ def parse_role_description(text):
                 result["must_have"].extend(_parse_skill_items(after_colon))
             continue
 
-        # Nice-to-have header
         if _NICE_TO_HAVE_RE.match(line):
             current_section = "nice_to_have"
             after_colon = line.split(":", 1)[1].strip() if ":" in line else ""
@@ -382,7 +368,6 @@ def parse_role_description(text):
                 result["nice_to_have"].extend(_parse_skill_items(after_colon))
             continue
 
-        # Domain header
         dm = _DOMAIN_RE.match(line)
         if dm:
             result["domain_hints"].extend(
@@ -391,12 +376,10 @@ def parse_role_description(text):
             current_section = "domain"
             continue
 
-        # Other section header -> reset
         if _is_section_header(line):
             current_section = None
             continue
 
-        # Collect items under active section
         if current_section == "must_have":
             result["must_have"].extend(_parse_bullet_line(line))
         elif current_section == "nice_to_have":
@@ -406,16 +389,13 @@ def parse_role_description(text):
                 [d.strip() for d in line.split(",") if d.strip()]
             )
 
-    # Deduplicate preserving order
     result["must_have"] = list(dict.fromkeys(result["must_have"]))
     result["nice_to_have"] = list(dict.fromkeys(result["nice_to_have"]))
     result["domain_hints"] = list(dict.fromkeys(result["domain_hints"]))
     return result
 
 
-# ============================================================
 # Candidate evidence collection (from JSON only)
-# ============================================================
 
 def collect_candidate_terms(cv_json):
     """
@@ -425,7 +405,6 @@ def collect_candidate_terms(cv_json):
     """
     terms = set()
 
-    # hard_skills: category names + all tools
     hs = cv_json.get("hard_skills", {})
     if isinstance(hs, dict):
         for cat_name, tools_list in hs.items():
@@ -436,7 +415,6 @@ def collect_candidate_terms(cv_json):
                     if isinstance(t, str) and t.strip():
                         terms.add(_normalize_skill(t))
 
-    # skills_overview: category names + tool names
     for s in cv_json.get("skills_overview", []):
         if not isinstance(s, dict):
             continue
@@ -447,7 +425,6 @@ def collect_candidate_terms(cv_json):
             if isinstance(t, str) and t.strip():
                 terms.add(_normalize_skill(t))
 
-    # projects_experience: tech_stack + role + domains
     for p in cv_json.get("projects_experience", []):
         if not isinstance(p, dict):
             continue
@@ -461,12 +438,10 @@ def collect_candidate_terms(cv_json):
             if isinstance(d, str) and d.strip():
                 terms.add(_normalize(d))
 
-    # Top-level domains
     for d in cv_json.get("domains", []):
         if isinstance(d, str) and d.strip():
             terms.add(_normalize(d))
 
-    # Title
     title = cv_json.get("title", "")
     if isinstance(title, str) and title.strip():
         terms.add(_normalize(title))
@@ -475,9 +450,7 @@ def collect_candidate_terms(cv_json):
     return terms
 
 
-# ============================================================
 # Requirement matching (deterministic, with evidence)
-# ============================================================
 
 def _match_requirement(req_text, candidate_terms):
     """
@@ -551,9 +524,7 @@ def _estimate_candidate_seniority(cv_json):
     return best_kw
 
 
-# ============================================================
 # Main alignment computation
-# ============================================================
 
 def compute_alignment(cv_json, role_description):
     """
@@ -644,6 +615,7 @@ def compute_alignment(cv_json, role_description):
         notes.append("Required seniority not specified in role description.")
 
     return {
+        "candidate_name": cv_json.get("full_name", ""),
         "target_role_title": parsed["role_title"],
         "candidate_role_title": candidate_role,
         "role_title_match": role_title_match,
@@ -666,168 +638,7 @@ def compute_alignment(cv_json, role_description):
     }
 
 
-# ============================================================
-# PDF rendering — alignment summary prepended to original PDF
-# ============================================================
-
-def render_alignment_pdf(alignment_summary, original_pdf_bytes):
-    """
-    Create an alignment summary page and prepend it to the original PDF.
-    Returns the combined PDF as bytes.
-    Uses only fitz (PyMuPDF) — no new dependencies.
-    """
-    summary_doc = fitz.open()
-    page = summary_doc.new_page(width=595, height=842)  # A4
-
-    y = 50
-
-    def _text(x, yy, txt, size=10, bold=False, color=(0, 0, 0)):
-        fn = "Helvetica-Bold" if bold else "Helvetica"
-        max_chars = int((545 - x) / (size * 0.5))
-        if len(txt) > max_chars:
-            txt = txt[:max_chars - 3] + "..."
-        page.insert_text((x, yy), txt, fontsize=size, fontname=fn, color=color)
-
-    def _check_page():
-        nonlocal page, y
-        if y > 790:
-            page = summary_doc.new_page(width=595, height=842)
-            y = 50
-
-    def _line():
-        nonlocal y
-        page.draw_line((50, y), (545, y), color=(0.3, 0.3, 0.3), width=0.5)
-        y += 12
-
-    # Title
-    _text(50, y, "ALIGNMENT SUMMARY", size=16, bold=True)
-    y += 24
-    _line()
-
-    # Roles
-    _text(50, y, "Target Role:", size=10, bold=True)
-    _text(160, y, alignment_summary.get("target_role_title", "") or "N/A", size=10)
-    y += 16
-    _text(50, y, "Candidate Role:", size=10, bold=True)
-    _text(160, y, alignment_summary.get("candidate_role_title", "") or "N/A", size=10)
-    y += 16
-    match_str = "Yes" if alignment_summary.get("role_title_match") else "No"
-    _text(50, y, "Role Match:", size=10, bold=True)
-    _text(160, y, match_str, size=10)
-    y += 20
-
-    # Seniority
-    _text(50, y, "SENIORITY", size=11, bold=True, color=(0.1, 0.1, 0.4))
-    y += 16
-    _text(70, y, f"Required: {alignment_summary.get('seniority_required', '') or 'N/A'}", size=10)
-    y += 14
-    _text(70, y, f"Estimated: {alignment_summary.get('seniority_estimated', '') or 'N/A'}", size=10)
-    y += 14
-    sm = alignment_summary.get("seniority_match", "")
-    sm_str = "Yes" if sm is True else ("No" if sm is False else "N/A")
-    _text(70, y, f"Match: {sm_str}", size=10)
-    y += 20
-
-    # Must-have
-    _text(50, y, "MUST-HAVE SKILLS", size=11, bold=True, color=(0.1, 0.1, 0.4))
-    y += 16
-    must = alignment_summary.get("must_have", {})
-    for item in must.get("matched", []):
-        _check_page()
-        txt = item.get("text", item) if isinstance(item, dict) else str(item)
-        ev = item.get("evidence", []) if isinstance(item, dict) else []
-        label = f"[+] {txt}"
-        if ev:
-            label += f"  ({', '.join(ev[:5])})"
-        _text(70, y, label, size=10, color=(0, 0.45, 0))
-        y += 14
-    for item in must.get("missing", []):
-        _check_page()
-        txt = item.get("text", item) if isinstance(item, dict) else str(item)
-        _text(70, y, f"[-] {txt}", size=10, color=(0.7, 0, 0))
-        y += 14
-    if not must.get("matched") and not must.get("missing"):
-        _text(70, y, "No must-have skills parsed from role description", size=10, color=(0.4, 0.4, 0.4))
-        y += 14
-    y += 6
-
-    # Nice-to-have
-    _check_page()
-    _text(50, y, "NICE-TO-HAVE SKILLS", size=11, bold=True, color=(0.1, 0.1, 0.4))
-    y += 16
-    nice = alignment_summary.get("nice_to_have", {})
-    for item in nice.get("matched", []):
-        _check_page()
-        txt = item.get("text", item) if isinstance(item, dict) else str(item)
-        ev = item.get("evidence", []) if isinstance(item, dict) else []
-        label = f"[+] {txt}"
-        if ev:
-            label += f"  ({', '.join(ev[:5])})"
-        _text(70, y, label, size=10, color=(0, 0.45, 0))
-        y += 14
-    for item in nice.get("missing", []):
-        _check_page()
-        txt = item.get("text", item) if isinstance(item, dict) else str(item)
-        _text(70, y, f"[-] {txt}", size=10, color=(0.7, 0, 0))
-        y += 14
-    if not nice.get("matched") and not nice.get("missing"):
-        _text(70, y, "No nice-to-have skills specified", size=10, color=(0.4, 0.4, 0.4))
-        y += 14
-    y += 6
-
-    # Domain
-    _check_page()
-    _text(50, y, "DOMAIN", size=11, bold=True, color=(0.1, 0.1, 0.4))
-    y += 16
-    _text(70, y, f"Required: {', '.join(alignment_summary.get('domain_required', [])) or 'N/A'}", size=10)
-    y += 14
-    _text(70, y, f"Candidate: {', '.join(alignment_summary.get('domain_candidate', [])) or 'N/A'}", size=10)
-    y += 14
-    dm = alignment_summary.get("domain_match", "")
-    dm_str = "Yes" if dm is True else ("No" if dm is False else "N/A")
-    _text(70, y, f"Match: {dm_str}", size=10)
-    y += 20
-
-    # Overall
-    _check_page()
-    overall = alignment_summary.get("overall_alignment", "unclear")
-    overall_display = overall.replace("_", " ").upper()
-    color_map = {
-        "strong_match": (0, 0.5, 0),
-        "partial_match": (0.75, 0.55, 0),
-        "weak_match": (0.7, 0, 0),
-        "unclear": (0.5, 0.5, 0.5),
-    }
-    _text(50, y, "OVERALL ALIGNMENT", size=11, bold=True, color=(0.1, 0.1, 0.4))
-    y += 18
-    _text(70, y, overall_display, size=14, bold=True, color=color_map.get(overall, (0, 0, 0)))
-    y += 20
-
-    # Notes
-    notes = alignment_summary.get("notes", [])
-    if notes:
-        _check_page()
-        _text(50, y, "NOTES", size=11, bold=True, color=(0.1, 0.1, 0.4))
-        y += 16
-        for note in notes:
-            _check_page()
-            _text(70, y, f"- {note}", size=9, color=(0.4, 0.4, 0.4))
-            y += 14
-
-    # Merge: summary pages + original CV pages
-    original_doc = fitz.open(stream=original_pdf_bytes, filetype="pdf")
-    summary_doc.insert_pdf(original_doc)
-
-    output = summary_doc.tobytes()
-    summary_doc.close()
-    original_doc.close()
-
-    return output
-
-
-# ============================================================
 # Deterministic self-test
-# ============================================================
 
 def _self_test():
     """

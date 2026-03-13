@@ -14,6 +14,13 @@ import re
 import os
 import json
 import ast
+from html import escape as _html_escape
+
+
+def _esc(text) -> str:
+    """Escape text for safe use in ReportLab Paragraph XML markup."""
+    return _html_escape(str(text), quote=False)
+
 
 # --- Fonts ---
 pdfmetrics.registerFont(TTFont("Roboto", "fonts/Roboto-Regular.ttf"))
@@ -428,13 +435,11 @@ class RoundedCard(Flowable):
         self._inner = kif
         self._height = max(1, h + 2 * self.padding + border)
 
-        # ⬅️ Return the actual width we will draw
         return self._outerW + border, self._height
 
     def draw(self):
         c = self.canv
 
-        # Draw exactly what we computed in wrap()
         w = self._outerW
         h = self._height
 
@@ -628,6 +633,112 @@ def make_projects_section(projects, styles):
     return elements
 
 
+def make_position_skills_box(json_data, styles):
+    """
+    Render a 'Key Skills for <Role>' table (same layout as Skills Overview)
+    showing only the tools that match the role requirements.
+    Only appears in tailored CVs (when _position_skills key is present).
+    """
+    pos_skills = json_data.get("_position_skills", [])
+    role_title = json_data.get("_target_role_title", "").strip()
+    if not pos_skills:
+        return None
+
+    pos_set = {s.lower() for s in pos_skills}
+
+    # Filter skills_overview rows: keep only matched tools per category
+    skills_overview = json_data.get("skills_overview", [])
+    filtered_rows = []
+    for item in (skills_overview if isinstance(skills_overview, list) else []):
+        if not isinstance(item, dict):
+            continue
+        cat = (item.get("category") or item.get("Kategorie") or "").strip()
+        tools_list = item.get("tools")
+        if tools_list is None:
+            tools_list = item.get("Werkzeuge", [])
+        if isinstance(tools_list, str):
+            tools_list = [t.strip() for t in re.split(r"[,/;]", tools_list) if t.strip()]
+        elif isinstance(tools_list, list):
+            tools_list = [str(t).strip() for t in tools_list if str(t).strip()]
+        else:
+            tools_list = []
+
+        yoe_value = item.get("years_of_experience")
+        if yoe_value is None:
+            yoe_value = item.get("Jahre Erfahrung")
+
+        matched = [t for t in tools_list if t.lower() in pos_set]
+        if not cat or not matched:
+            continue
+        filtered_rows.append({"category": cat, "tools": matched, "yoe": yoe_value})
+
+    if not filtered_rows:
+        return None
+
+    heading = f"Key Skills for {_esc(role_title)}" if role_title else "Key Position Skills"
+    title = Paragraph(
+        f'<font color="#2196F3"><b>{heading.upper()}</b></font>',
+        ParagraphStyle(
+            "PositionSkillsTitle",
+            parent=styles["Heading2"],
+            fontSize=18,
+            leading=22,
+            spaceAfter=12,
+            textColor=colors.HexColor("#2196F3"),
+        )
+    )
+
+    # Table styles (same as Skills Overview)
+    header_left = ParagraphStyle("PosHdrL", parent=styles["Normal"],
+                                 fontName=BOLD_FONT, fontSize=11,
+                                 alignment=TA_LEFT, textColor=colors.HexColor("#222e3a"))
+    header_center = ParagraphStyle("PosHdrC", parent=styles["Normal"],
+                                   fontName=BOLD_FONT, fontSize=11,
+                                   alignment=TA_CENTER, textColor=colors.HexColor("#222e3a"))
+    cell_left = ParagraphStyle("PosCellL", parent=styles["Normal"],
+                               fontSize=11, alignment=TA_LEFT,
+                               textColor=colors.HexColor("#222e3a"))
+    cell_center = ParagraphStyle("PosCellC", parent=styles["Normal"],
+                                 fontSize=11, alignment=TA_CENTER,
+                                 textColor=colors.HexColor("#222e3a"))
+    cell_tools = ParagraphStyle("PosCellT", parent=styles["Normal"],
+                                fontSize=11, leading=13, alignment=TA_LEFT,
+                                wordWrap='CJK', textColor=colors.HexColor("#222e3a"))
+
+    rows = [[
+        Paragraph("Category", header_left),
+        Paragraph("Tools", header_left),
+        Paragraph("YoE", header_center),
+    ]]
+
+    for fr in filtered_rows:
+        tools_str = ", ".join(sorted(fr["tools"])) or "-"
+        yoe_raw = str(fr.get("yoe", "") or "").strip()
+        nums = re.findall(r"\d+(?:\.\d+)?", yoe_raw)
+        yoe_str = str(int(round(float(nums[-1])))) if nums else "0"
+
+        rows.append([
+            Paragraph(format_category_name(fr["category"]), cell_left),
+            Paragraph(tools_str, cell_tools),
+            Paragraph(yoe_str, cell_center),
+        ])
+
+    table = Table(rows, colWidths=[55 * mm, 95 * mm, 25 * mm], hAlign="LEFT")
+    style = TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 6),
+        ("TOPPADDING", (0, 0), (-1, 0), 6),
+    ])
+    for i in range(1, len(rows)):
+        style.add("BACKGROUND", (0, i), (-1, i),
+                  colors.whitesmoke if i % 2 == 1 else colors.white)
+    style.add("WORDWRAP", (1, 1), (1, -1), None)
+    style.add("LEADING", (1, 1), (1, -1), 13)
+    table.setStyle(style)
+
+    return [title, Spacer(1, 8), table, Spacer(1, 12)]
+
+
 def make_skills_overview_box(data, styles):
     skills_overview = data.get("skills_overview", [])
     if not skills_overview:
@@ -723,7 +834,6 @@ def make_skills_overview_box(data, styles):
                                 fontSize=11, leading=13, alignment=TA_LEFT,
                                 wordWrap='CJK', textColor=colors.HexColor("#222e3a"))
 
-    # --- Table ---
     rows = [[
         Paragraph("Category", header_left),
         Paragraph("Tools", header_left),
@@ -731,22 +841,20 @@ def make_skills_overview_box(data, styles):
     ]]
 
     for cat, values in grouped.items():
-        # 1) Tools → string
         tools_list = values.get("tools", [])
         tools_str = ", ".join(sorted(set([str(t).strip() for t in tools_list if str(t).strip()]))) or "-"
 
-        # 2) YoE → use original string, extract number, round, keep digits only
         yoe_raw = str(values.get("yoe_display", "")).strip()
         nums = re.findall(r"\d+(?:\.\d+)?", yoe_raw)
         if nums:
-            yoe_num = round(float(nums[-1]))   # last number (supports "4–5", "4.8", "5+")
+            yoe_num = round(float(nums[-1]))   
             yoe_str = str(int(yoe_num))
         else:
             yoe_str = "0"
 
         rows.append([
             Paragraph(format_category_name(cat), cell_left),
-            Paragraph(tools_str, cell_tools),   # requires wordWrap='CJK'
+            Paragraph(tools_str, cell_tools),   
             Paragraph(yoe_str, cell_center),
         ])
 
@@ -761,20 +869,18 @@ def make_skills_overview_box(data, styles):
         ("TOPPADDING", (0, 0), (-1, 0), 6),
     ])
 
-    # Alternating row colors (grey/white)
     for i in range(1, len(rows)):
         style.add("BACKGROUND", (0, i), (-1, i),
-                  colors.whitesmoke if i % 2 == 1 else colors.white)
+                colors.whitesmoke if i % 2 == 1 else colors.white)
         
-    # 🔹 Force word wrapping in the second column (Tools)
     style.add("WORDWRAP", (1, 1), (1, -1), None)
 
-    # 🔹 Slightly increase row height
     style.add("LEADING", (1, 1), (1, -1), 13)
         
     table.setStyle(style)
 
     return [title, Spacer(1, 8), table, Spacer(1, 12)]
+
 
 
 # --- Main PDF build ---
@@ -810,6 +916,11 @@ def create_pretty_first_section(json_data, output_dir=".", prefix="CV Inpro"):
 
     projects_section = make_projects_section(json_data.get("projects_experience", []), styles)
     elements += projects_section
+
+    # Position skills section (tailored CV only)
+    position_skills_box = make_position_skills_box(json_data, styles)
+    if position_skills_box:
+        elements.extend([Spacer(1, 6), *position_skills_box])
 
     skills_overview_box = make_skills_overview_box(json_data, styles)
     if skills_overview_box:

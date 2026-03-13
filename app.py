@@ -9,6 +9,7 @@ from pdf_processor import prepare_cv_text, clean_cv_text
 from chatgpt_client import ask_chatgpt_v2
 from postprocess import postprocess_filled_cv
 from cv_pdf_generator import create_pretty_first_section
+from tailoring import compute_relevance_ranking, reorder_cv_by_relevance
 
 # -------------------------
 # Page
@@ -391,7 +392,6 @@ if uploaded_file:
             status_text.text("📖 Text wird extrahiert…")
             t0 = time.time()
             prepared_text, raw_text = prepare_cv_text(pdf_path)
-            print("DEBUG prepared_text length (chars):", len(prepared_text))
             timing["extract"] = time.time() - t0
             st.session_state["raw_text"] = raw_text
             st.session_state["pdf_path"] = pdf_path
@@ -467,13 +467,7 @@ if uploaded_file:
                 progress.progress(100)
 
                 timing["total"] = time.time() - start_time
-                st.info(
-                    f"Timing: extract={timing['extract']:.1f}s | "
-                    f"GPT={timing['gpt']:.1f}s | "
-                    f"postprocess={timing['postprocess']:.1f}s | "
-                    f"PDF={timing['pdfgen']:.1f}s | "
-                    f"total={timing['total']:.1f}s"
-                )
+
             else:
                 st.error("⚠️ Das Modell hat keine Daten zurückgegeben.")
         except Exception as e:
@@ -963,30 +957,58 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
                 if not role_desc:
                     st.warning("Please paste a role description before analyzing.")
                 else:
-                    from alignment import compute_alignment, render_alignment_pdf
+                    from alignment import compute_alignment
                     source_json = copy.deepcopy(st.session_state.get("edited_json", {}))
                     alignment_summary = compute_alignment(source_json, role_desc)
+
+                    # Enrich with relevance ranking for the Alignment PDF
+                    relevance = compute_relevance_ranking(source_json, alignment_summary)
+                    alignment_summary["relevant_projects"] = relevance["relevant_projects"]
+                    alignment_summary["relevant_skill_areas"] = relevance["relevant_skill_areas"]
 
                     # Preserve originals
                     st.session_state["cv_json_original"] = copy.deepcopy(source_json)
                     st.session_state["pdf_bytes_original"] = st.session_state.get("pdf_bytes", b"")
 
-                    # Create aligned JSON
-                    aligned_json = copy.deepcopy(source_json)
-                    aligned_json["alignment_summary"] = alignment_summary
-                    st.session_state["cv_json_aligned"] = aligned_json
+                    st.session_state["alignment_summary"] = alignment_summary
 
-                    # Create aligned PDF
-                    original_pdf = st.session_state.get("pdf_bytes", b"")
-                    if original_pdf:
-                        st.session_state["pdf_bytes_aligned"] = render_alignment_pdf(
-                            alignment_summary, original_pdf
-                        )
+                    # Create tailored CV (reordered by relevance, same format)
+                    tailored_json = reorder_cv_by_relevance(
+                        copy.deepcopy(source_json), alignment_summary
+                    )
+
+                    # Inject position-matched skills for the tailored PDF
+                    _pos_skills = set()
+                    for _sec in ("must_have", "nice_to_have"):
+                        for _item in alignment_summary.get(_sec, {}).get("matched", []):
+                            if isinstance(_item, dict):
+                                for _ev in _item.get("evidence", []):
+                                    if str(_ev).strip():
+                                        _pos_skills.add(str(_ev).strip())
+                    tailored_json["_position_skills"] = sorted(_pos_skills)
+                    tailored_json["_target_role_title"] = alignment_summary.get("target_role_title", "")
+
+                    st.session_state["cv_json_tailored"] = tailored_json
+                    st.session_state["json_bytes_tailored"] = json.dumps(
+                        tailored_json, indent=2, ensure_ascii=False
+                    ).encode("utf-8")
+
+                    # Generate tailored PDF (apply same cleanup as original)
+                    tailored_json = _remove_empty_fields(tailored_json)
+                    pdf_name = st.session_state.get("pdf_name", "CV_Streamlit")
+                    tailored_pdf_path = create_pretty_first_section(
+                        tailored_json, output_dir="data_output",
+                        prefix=pdf_name.replace("CV Inpro", "CV Inpro Tailored")
+                            if "CV Inpro" in pdf_name else f"{pdf_name}_tailored"
+                    )
+                    with open(tailored_pdf_path, "rb") as _f:
+                        st.session_state["pdf_bytes_tailored"] = _f.read()
+
                     st.success("Alignment analysis complete.")
 
             # Show alignment result if available
-            if "cv_json_aligned" in st.session_state:
-                a = st.session_state["cv_json_aligned"].get("alignment_summary", {})
+            if "alignment_summary" in st.session_state:
+                a = st.session_state["alignment_summary"]
                 overall = a.get("overall_alignment", "unclear")
                 color_map = {
                     "strong_match": "green",
@@ -1122,9 +1144,12 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
 
     # Downloads
     pdf_name = st.session_state.get("pdf_name", "CV_Streamlit")
-    has_alignment = "cv_json_aligned" in st.session_state
-
-    col_orig, col_aligned = st.columns(2) if has_alignment else (st.container(), None)
+    has_alignment = "cv_json_tailored" in st.session_state
+    if has_alignment:
+        col_orig, col_tailored = st.columns(2)
+    else:
+        col_orig = st.container()
+        col_tailored = None
 
     with col_orig:
         if has_alignment:
@@ -1146,24 +1171,25 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
                 disabled=st.session_state.get("pdf_needs_refresh", False),
             )
 
-    if has_alignment and col_aligned is not None:
-        with col_aligned:
-            st.markdown("**Aligned**")
-            aligned_json_bytes = json.dumps(
-                st.session_state["cv_json_aligned"], indent=2, ensure_ascii=False
-            ).encode("utf-8")
-            st.download_button(
-                label="📘 Aligned JSON",
-                data=aligned_json_bytes,
-                file_name=f"{pdf_name}_aligned.json",
-                mime="application/json",
-                key="download_aligned_json",
-            )
-            if "pdf_bytes_aligned" in st.session_state:
+    if has_alignment and col_tailored is not None:
+        with col_tailored:
+            st.markdown("**Tailored**")
+            if "json_bytes_tailored" in st.session_state:
                 st.download_button(
-                    label="📄 Aligned PDF",
-                    data=st.session_state["pdf_bytes_aligned"],
-                    file_name=f"{pdf_name}_aligned.pdf",
-                    mime="application/pdf",
-                    key="download_aligned_pdf",
+                    label="📘 Tailored JSON",
+                    data=st.session_state["json_bytes_tailored"],
+                    file_name=f"{pdf_name}_tailored.json",
+                    mime="application/json",
+                    key="download_tailored_json",
                 )
+            if "pdf_bytes_tailored" in st.session_state:
+                st.download_button(
+                    label="📄 Tailored PDF",
+                    data=st.session_state["pdf_bytes_tailored"],
+                    file_name=f"{pdf_name}_tailored.pdf",
+                    mime="application/pdf",
+                    key="download_tailored_pdf",
+                )
+
+
+
