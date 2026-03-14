@@ -8,7 +8,6 @@ No GPT calls. Purely deterministic matching.
 import re
 import copy
 import io
-import fitz  # PyMuPDF — already a project dependency
 
 ENABLE_ALIGNMENT = True
 

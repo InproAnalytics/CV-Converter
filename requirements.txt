@@ -1,0 +1,9 @@
+streamlit
+openai
+python-dotenv
+PyMuPDF
+reportlab
+langdetect
+pandas
+pillow
+PyPDF2
