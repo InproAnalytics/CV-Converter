@@ -362,6 +362,7 @@ def clear_candidate_data():
         "DATA_skills_overview_rows",
         "DATA_languages_rows",
         "DATA_education_rows",
+        "_skills_yoe_backup",
         # ---- editor WIDGET keys (internal widget state)
         "W_projects_editor",
         "W_hard_skills_editor",
@@ -827,6 +828,18 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
             sk_rows = _ensure_data_rows(DATA_SK, initial_rows)
             # Normalize any previously stored rows to avoid showing legacy/empty columns.
             sk_rows = [_skills_overview_row_to_ui(r) for r in sk_rows if isinstance(r, dict)]
+
+            _YOE_KEY = "_skills_yoe_backup"
+            if _YOE_KEY not in st.session_state:
+                _yoe_map = {}
+                for _r in initial:
+                    if not isinstance(_r, dict):
+                        continue
+                    _cat = (_r.get("category") or _r.get("Kategorie") or "").strip().lower()
+                    _yoe = _r.get("years_of_experience") or _r.get("Jahre Erfahrung") or ""
+                    if _cat and _yoe and str(_yoe).strip() not in ("", "0"):
+                        _yoe_map[_cat] = str(_yoe).strip()
+                st.session_state[_YOE_KEY] = _yoe_map
             if not sk_rows:
                 sk_rows = [{"Kategorie": "", "Werkzeuge": [], "Jahre Erfahrung": ""}]
             st.session_state[DATA_SK] = sk_rows
@@ -852,6 +865,13 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
                 if not isinstance(row, dict):
                     continue
                 cleaned.append(_skills_overview_row_to_ui(row))
+
+            _yoe_backup = st.session_state.get("_skills_yoe_backup", {})
+            if _yoe_backup:
+                for _row in cleaned:
+                    _cat_key = (_row.get("Kategorie") or "").strip().lower()
+                    if _cat_key in _yoe_backup and (not _row.get("Jahre Erfahrung") or _row.get("Jahre Erfahrung") in ("", "0")):
+                        _row["Jahre Erfahrung"] = _yoe_backup[_cat_key]
 
             edited["skills_overview"] = cleaned
 
