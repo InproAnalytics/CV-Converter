@@ -198,6 +198,32 @@ def is_new_candidate(uploaded_file) -> bool:
     return uploaded_file.name != last_file
 
 
+def _normalize_skills_for_pdf(json_data):
+    """Normalize skills_overview from German editor keys to English PDF keys,
+    preserving YoE values that would otherwise be stripped by _remove_empty_fields."""
+    skills = json_data.get("skills_overview", [])
+    if not isinstance(skills, list):
+        return json_data
+    normalized = []
+    for row in skills:
+        if not isinstance(row, dict):
+            continue
+        cat = (row.get("category") or row.get("Kategorie") or "").strip()
+        tools = row.get("tools")
+        if tools is None:
+            tools = row.get("Werkzeuge", [])
+        yoe = row.get("years_of_experience")
+        if yoe is None:
+            yoe = row.get("Jahre Erfahrung")
+        if yoe is None or yoe == "":
+            yoe = "0"
+        if not cat:
+            continue
+        normalized.append({"category": cat, "tools": tools, "years_of_experience": str(yoe)})
+    json_data["skills_overview"] = normalized
+    return json_data
+
+
 def _remove_empty_fields(x):
     if isinstance(x, dict):
         out = {}
@@ -994,6 +1020,7 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
                     ).encode("utf-8")
 
                     # Generate tailored PDF (apply same cleanup as original)
+                    tailored_json = _normalize_skills_for_pdf(tailored_json)
                     tailored_json = _remove_empty_fields(tailored_json)
                     pdf_name = st.session_state.get("pdf_name", "CV_Streamlit")
                     tailored_pdf_path = create_pretty_first_section(
@@ -1125,6 +1152,7 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
             pdf_preview["companies"] = st.session_state.get("pdf_companies_list", [])
 
             # remove empty fields for pdf generation
+            pdf_preview = _normalize_skills_for_pdf(pdf_preview)
             pdf_json = _remove_empty_fields(pdf_preview)
 
             if not pdf_json.get("title"):
