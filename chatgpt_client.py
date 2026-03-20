@@ -680,7 +680,7 @@ RULES:
 -profile_summary:third-person technical,60-70 words max.
 -hard_skills:each tool in one category only.
 -projects_experience:ALL projects.company=name only,no city.responsibilities:exactly 3 bullets,12-14 words each,action verb+method.tech_stack:max 5 tools.domains:max 1 industry,[]if unclear.
--skills_overview:all tools by category.years_of_experience="".
+-skills_overview:all tools by category.years_of_experience MUST be an integer inferred from project durations(e.g.1,2,3,5).Never empty.
 -All values proper JSON types.
 TEXT:{text}"""
 
