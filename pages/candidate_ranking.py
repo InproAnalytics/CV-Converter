@@ -407,27 +407,26 @@ if "ranking_results" in st.session_state:
             # Per-candidate tailored CV generation
             if r["cv_json"] is not None:
                 st.markdown("---")
-                tkey = f"tailored_individual_{r['name']}"
+                tkey = f"tailored_individual_{rank}"
                 if st.button("Generate Tailored CV", key=f"btn_{tkey}"):
                     with st.spinner(f"Generating tailored CV for {r['name']}..."):
                         t_result = generate_tailored_cv(r)
                     if "tailored_individual" not in st.session_state:
                         st.session_state["tailored_individual"] = {}
-                    st.session_state["tailored_individual"][r["name"]] = t_result
+                    st.session_state["tailored_individual"][rank] = t_result
                     if t_result["error"]:
                         st.error(f"Failed: {t_result['error']}")
                     else:
                         st.success("Tailored CV ready.")
 
-                # Show download if previously generated
-                stored = st.session_state.get("tailored_individual", {}).get(r["name"])
+                stored = st.session_state.get("tailored_individual", {}).get(rank)
                 if stored and stored.get("pdf_bytes"):
                     st.download_button(
                         label="Download Tailored CV",
                         data=stored["pdf_bytes"],
                         file_name=f"CV_Tailored_{r['name'].replace(' ', '_')}.pdf",
                         mime="application/pdf",
-                        key=f"dl_individual_{r['name']}",
+                        key=f"dl_individual_{rank}",
                     )
 
 
@@ -461,7 +460,7 @@ if "ranking_results" in st.session_state:
     # Display tailored CV results
     if "tailored_results" in st.session_state:
         st.subheader("Tailored CVs")
-        for t in st.session_state["tailored_results"]:
+        for i, t in enumerate(st.session_state["tailored_results"]):
             col1, col2 = st.columns([3, 1])
             with col1:
                 if t["error"]:
@@ -475,5 +474,5 @@ if "ranking_results" in st.session_state:
                         data=t["pdf_bytes"],
                         file_name=f"CV_Tailored_{t['name'].replace(' ', '_')}.pdf",
                         mime="application/pdf",
-                        key=f"dl_tailored_{t['name']}",
+                        key=f"dl_tailored_{i}",
                     )
