@@ -341,7 +341,13 @@ def parse_role_description(text):
             break
     if not result["role_title"]:
         for line in lines:
-            if line and not _is_section_header(line) and len(line) < 120:
+            if not line:
+                continue
+            if _MUST_HAVE_RE.match(line) or _NICE_TO_HAVE_RE.match(line):
+                continue
+            if _DOMAIN_RE.match(line):
+                continue
+            if len(line) < 80:
                 result["role_title"] = line
                 break
 
@@ -391,6 +397,25 @@ def parse_role_description(text):
     result["must_have"] = list(dict.fromkeys(result["must_have"]))
     result["nice_to_have"] = list(dict.fromkeys(result["nice_to_have"]))
     result["domain_hints"] = list(dict.fromkeys(result["domain_hints"]))
+
+    if not result["must_have"] and not result["nice_to_have"]:
+        for line in lines:
+            if not line:
+                continue
+            if line == result["role_title"]:
+                continue
+            if _is_section_header(line):
+                continue
+            if _DOMAIN_RE.match(line) or _TITLE_RE.match(line):
+                continue
+            cleaned = re.sub(r"^[\s\-\u2022*\u00b7\u25aa\u2192>]+", "", line).strip()
+            if cleaned and len(cleaned) > 1:
+                result["must_have"].append(cleaned)
+        result["must_have"] = list(dict.fromkeys(result["must_have"]))
+
+    if not result["must_have"] and not result["nice_to_have"] and result["role_title"]:
+        result["must_have"].append(result["role_title"])
+
     return result
 
 
