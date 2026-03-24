@@ -499,8 +499,12 @@ def make_projects_section(projects, styles):
 
         pdfmetrics.registerFont(TTFont("Roboto-Italic", "fonts/Roboto-Italic.ttf"))
 
+        company = (project.get("company") or "").strip()
+
         # --- Card header ---
         header = f"<b>Project {idx}. {title}</b>"
+        if company:
+            header += f'<br/><font size="11" color="#555555">{_esc(company)}</font>'
         if role:
             header += f'<br/><font size="11" color="#888888">{role}</font>'
         if duration:
