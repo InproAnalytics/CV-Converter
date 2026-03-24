@@ -130,6 +130,7 @@ def process_single_cv(pdf_bytes: bytes, filename: str, role_desc: str) -> dict:
                                 break
                     i += 1
 
+            cleaned_resp = re.sub(r",\s*([}\]])", r"\1", cleaned_resp)
             cv_json = json.loads(cleaned_resp)
             cv_json = postprocess_filled_cv(cv_json, raw_text)
 
