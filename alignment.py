@@ -265,12 +265,21 @@ def _detect_seniority(text):
 # Role description parser (deterministic)
 
 _MUST_HAVE_RE = re.compile(
-    r"(?i)^[\s#*]*(must[\s\-]?have[s]?|required|requirements|mandatory|essential"
-    r"|pflicht|anforderungen|voraussetzungen|erforderlich)[\s:]*"
+    r"(?i)^[\s#*]*(must[\s\-]?have[s]?|required|requirements|key[\s\-]?requirements"
+    r"|technical[\s\-]?requirements|minimum[\s\-]?requirements"
+    r"|qualifications|core[\s\-]?competenc(?:ies|y)|prerequisites"
+    r"|expectations|needed|experience[\s\-]?required"
+    r"|(?:you|we)\s+(?:should|need|expect|require|are looking)"
+    r"|(?:what|skills)\s+you\s+bring"
+    r"|mandatory|essential|pflicht|anforderungen|voraussetzungen|erforderlich"
+    r"|ihr\s+profil|was\s+sie\s+mitbringen|was\s+du\s+mitbringst)[\s:]*"
 )
 _NICE_TO_HAVE_RE = re.compile(
     r"(?i)^[\s#*]*(nice[\s\-]?to[\s\-]?have|preferred|desired|desirable|bonus"
-    r"|optional|w[uü]nschenswert|von\s+vorteil)[\s:]*"
+    r"|optional|good[\s\-]?to[\s\-]?have|additional[\s\-]?skills"
+    r"|plus|it\s+would\s+be\s+(?:great|nice|good)"
+    r"|what\s+would\s+be\s+nice"
+    r"|w[uü]nschenswert|von\s+vorteil)[\s:]*"
 )
 _DOMAIN_RE = re.compile(
     r"(?i)^[\s#*]*(domain|industry|sector|branche)[\s:]+(.+)"
