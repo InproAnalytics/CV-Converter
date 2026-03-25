@@ -298,7 +298,7 @@ def _is_section_header(line):
     if s.endswith(":"):
         return True
     words = s.split()
-    if len(words) <= 5 and (s.isupper() or s.istitle()):
+    if len(words) >= 2 and len(words) <= 5 and s.isupper():
         return True
     return False
 
@@ -323,7 +323,7 @@ def _parse_bullet_line(line):
     line = re.sub(r"^[\s\-\u2022*\u00b7\u25aa\u2192>]+", "", line).strip()
     if not line:
         return []
-    return _parse_skill_items(line)
+    return [line]
 
 
 def parse_role_description(text):
