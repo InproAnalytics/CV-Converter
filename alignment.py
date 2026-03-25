@@ -36,6 +36,19 @@ _CANONICAL = {
     "langchain": "langchain", "lang chain": "langchain",
     "chromadb": "chromadb", "chroma": "chromadb",
     "fastapi": "fastapi", "fast api": "fastapi",
+    "pyspark": "pyspark",
+    "apache spark": "spark", "spark": "spark",
+    "apache airflow": "airflow", "airflow": "airflow",
+    "databricks": "databricks",
+    "power bi": "power bi", "powerbi": "power bi",
+    "delta lake": "delta lake",
+    "azure devops": "azure devops",
+    "sql server": "sql server", "mssql": "sql server",
+    "palantir foundry": "palantir foundry",
+    "data factory": "data factory", "azure data factory": "data factory",
+    "r": "r-lang", "r language": "r-lang",
+    "go": "golang", "golang": "golang",
+    "etl": "etl", "elt": "elt",
 }
 
 _SENIORITY_KEYWORDS = {
@@ -212,6 +225,77 @@ CONCEPT_MAP = {
     "streaming": [
         "kafka", "flink", "spark streaming", "kinesis",
     ],
+    "etl": [
+        "spark", "pyspark", "airflow", "databricks", "data factory",
+        "dbt", "talend", "informatica",
+    ],
+    "elt": [
+        "spark", "pyspark", "airflow", "databricks", "data factory",
+        "dbt",
+    ],
+    "etl pipelines": [
+        "spark", "pyspark", "airflow", "databricks", "data factory",
+        "dbt", "talend", "informatica",
+    ],
+    "etl/elt": [
+        "spark", "pyspark", "airflow", "databricks", "data factory",
+        "dbt",
+    ],
+    "data warehouse": [
+        "bigquery", "snowflake", "redshift", "databricks", "delta lake",
+        "synapse",
+    ],
+    "data warehousing": [
+        "bigquery", "snowflake", "redshift", "databricks", "delta lake",
+        "synapse",
+    ],
+    "data lake": [
+        "delta lake", "databricks", "spark", "pyspark",
+    ],
+    "data modeling": [
+        "star schema", "snowflake schema", "dimensional modeling",
+        "er modeling", "normalization",
+    ],
+    "data governance": [
+        "palantir foundry", "databricks", "delta lake", "data lineage",
+    ],
+    "data orchestration": [
+        "airflow", "prefect", "dagster", "data factory",
+    ],
+    "bi tools": [
+        "power bi", "tableau", "looker", "metabase", "qlik",
+    ],
+    "bi": [
+        "power bi", "tableau", "looker", "metabase", "qlik",
+    ],
+    "business intelligence": [
+        "power bi", "tableau", "looker", "metabase", "qlik",
+    ],
+    "apache spark": [
+        "spark", "pyspark", "databricks",
+    ],
+    "pyspark": [
+        "pyspark", "spark", "databricks",
+    ],
+    "databricks": [
+        "databricks", "spark", "pyspark", "delta lake",
+    ],
+    "apache airflow": [
+        "airflow",
+    ],
+    "azure cloud services": [
+        "azure", "data factory", "azure devops",
+    ],
+    "azure cloud": [
+        "azure", "data factory", "azure devops",
+    ],
+    "devops": [
+        "docker", "kubernetes", "jenkins", "github actions", "gitlab ci",
+        "azure devops",
+    ],
+    "sql server": [
+        "sql server", "mssql",
+    ],
 }
 
 # Stop words for token-level matching — skipped when checking individual tokens
@@ -315,7 +399,7 @@ def _parse_skill_items(text):
         r"|strong|good|deep|solid|hands[\s\-]on)\s+(in|of|with)?\s*",
         "", text,
     )
-    items = re.split(r"[,;]|\s+/\s+", text)
+    items = re.split(r"[,;]", text)
     return [s.strip() for s in items if s.strip() and len(s.strip()) > 1]
 
 
@@ -470,6 +554,23 @@ def collect_candidate_terms(cv_json):
         for d in p.get("domains", []):
             if isinstance(d, str) and d.strip():
                 terms.add(_normalize(d))
+        for resp in p.get("responsibilities", []):
+            if not isinstance(resp, str) or not resp.strip():
+                continue
+            for token in re.split(r"[\s,;:()\[\]]+", resp):
+                token = token.strip(".-/\"'")
+                if len(token) >= 2:
+                    ns = _normalize_skill(token)
+                    if ns and ns not in _MATCH_STOP_WORDS:
+                        terms.add(ns)
+        overview = p.get("overview", "")
+        if isinstance(overview, str) and overview.strip():
+            for token in re.split(r"[\s,;:()\[\]]+", overview):
+                token = token.strip(".-/\"'")
+                if len(token) >= 2:
+                    ns = _normalize_skill(token)
+                    if ns and ns not in _MATCH_STOP_WORDS:
+                        terms.add(ns)
 
     for d in cv_json.get("domains", []):
         if isinstance(d, str) and d.strip():
@@ -510,15 +611,17 @@ def _match_requirement(req_text, candidate_terms):
             evidence.add(canonical_alt)
 
         # --- 2. Substring match for short alternatives (1-2 words) ---
-        if len(alt.split()) <= 2 and len(canonical_alt) >= 3:
+        if len(alt.split()) <= 2 and len(canonical_alt) >= 2:
             for c in candidate_terms:
-                if len(c) >= 3 and (canonical_alt in c or c in canonical_alt):
+                if len(c) >= 2 and (canonical_alt in c or c in canonical_alt):
                     evidence.add(c)
 
         # --- 3. Token-level exact match (skip stop words) ---
         tokens = alt.split()
         for token in tokens:
-            if len(token) < 2 or token in _MATCH_STOP_WORDS:
+            if token in _MATCH_STOP_WORDS:
+                continue
+            if len(token) < 2 and token not in _CANONICAL:
                 continue
             ct = _CANONICAL.get(token, token)
             if ct in candidate_terms:
