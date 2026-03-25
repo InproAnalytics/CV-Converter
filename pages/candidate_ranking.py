@@ -4,15 +4,21 @@ rank them by a weighted alignment score (0–100).
 """
 
 import streamlit as st
+import ast
 import json
 import os
 import re
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from pdf_processor import prepare_cv_text, clean_cv_text
-from chatgpt_client import ask_chatgpt_v2
-from postprocess import postprocess_filled_cv
+from chatgpt_client import (
+    gpt_extract_cv_without_projects,
+    gpt_extract_projects_text,
+    gpt_structurize_projects_from_text,
+)
+from postprocess import postprocess_filled_cv, safe_parse_if_str
 from alignment import compute_alignment
 import copy
 from tailoring import reorder_cv_by_relevance
@@ -41,10 +47,11 @@ st.markdown("Upload multiple CVs and a role description to rank candidates by fi
 def compute_score(alignment_summary: dict) -> float:
     """
     Weighted score 0–100:
-        - must-have coverage:  60%
-        - nice-to-have coverage: 20%
+        - must-have coverage:  55%
+        - nice-to-have coverage: 15%
         - seniority fit:       10%
         - domain fit:          10%
+        - role title fit:      10%
     """
     must = alignment_summary.get("must_have", {})
     total_must = len(must.get("matched", [])) + len(must.get("missing", []))
@@ -62,7 +69,7 @@ def compute_score(alignment_summary: dict) -> float:
     elif seniority_match is False:
         seniority_score = 0
     else:
-        seniority_score = 50  
+        seniority_score = 50
 
     domain_match = alignment_summary.get("domain_match", "")
     if domain_match is True:
@@ -70,13 +77,22 @@ def compute_score(alignment_summary: dict) -> float:
     elif domain_match is False:
         domain_score = 0
     else:
-        domain_score = 50  
+        domain_score = 50
+
+    role_title_match = alignment_summary.get("role_title_match", "")
+    if role_title_match is True:
+        role_score = 100
+    elif role_title_match is False:
+        role_score = 0
+    else:
+        role_score = 50
 
     total = (
-        must_score * 0.60
-        + nice_score * 0.20
+        must_score * 0.55
+        + nice_score * 0.15
         + seniority_score * 0.10
         + domain_score * 0.10
+        + role_score * 0.10
     )
     return round(total, 1)
 
@@ -100,39 +116,50 @@ def process_single_cv(pdf_bytes: bytes, filename: str, role_desc: str) -> dict:
             prepared_text, raw_text = prepare_cv_text(tmp_path)
             prepared_text = clean_cv_text(prepared_text)
 
-            gpt_result = ask_chatgpt_v2(prepared_text, model=MODEL)
-            raw_resp = (gpt_result or {}).get("raw_response", "")
-            if not raw_resp:
-                result["error"] = "GPT returned empty response"
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                fut_projects_text = executor.submit(gpt_extract_projects_text, prepared_text)
+                fut_base_cv = executor.submit(gpt_extract_cv_without_projects, prepared_text)
+                projects_text_result = fut_projects_text.result()
+                base_result = fut_base_cv.result()
+
+            if not projects_text_result.get("success"):
+                result["error"] = "GPT project text extraction failed"
+                return result
+            if not base_result.get("success"):
+                result["error"] = "GPT base CV extraction failed"
                 return result
 
-            # Strip markdown fences and trailing garbage from GPT output
-            cleaned_resp = raw_resp.strip()
-            if cleaned_resp.startswith("```"):
-                cleaned_resp = re.sub(r"^```(?:json)?\s*", "", cleaned_resp)
-                cleaned_resp = re.sub(r"\s*```\s*$", "", cleaned_resp)
-            # Extract first complete JSON object
-            brace_start = cleaned_resp.find("{")
-            if brace_start >= 0:
-                depth, i = 0, brace_start
-                in_str = False
-                while i < len(cleaned_resp):
-                    ch = cleaned_resp[i]
-                    if ch == '"' and (i == 0 or cleaned_resp[i - 1] != '\\'):
-                        in_str = not in_str
-                    elif not in_str:
-                        if ch == '{':
-                            depth += 1
-                        elif ch == '}':
-                            depth -= 1
-                            if depth == 0:
-                                cleaned_resp = cleaned_resp[brace_start:i + 1]
-                                break
-                    i += 1
+            projects_text = projects_text_result.get("text", "") or ""
+            base_cv = base_result.get("json", {}) or {}
 
-            cleaned_resp = re.sub(r",\s*([}\]])", r"\1", cleaned_resp)
-            cv_json = json.loads(cleaned_resp)
+            projects_struct_result = gpt_structurize_projects_from_text(projects_text)
+            if not projects_struct_result.get("success"):
+                result["error"] = "GPT project structuring failed"
+                return result
+
+            projects_payload = projects_struct_result.get("json", {}) or {}
+            projects_experience = projects_payload.get("projects_experience", [])
+
+            cv_json = base_cv
+            cv_json["projects_experience"] = projects_experience
+
+            for key in ["projects_experience", "skills_overview", "languages"]:
+                cv_json[key] = safe_parse_if_str(cv_json.get(key))
+                if isinstance(cv_json.get(key), str):
+                    try:
+                        cv_json[key] = ast.literal_eval(cv_json[key])
+                    except Exception:
+                        cv_json[key] = []
+
             cv_json = postprocess_filled_cv(cv_json, raw_text)
+
+            for key in ["projects_experience", "skills_overview", "languages"]:
+                cv_json[key] = safe_parse_if_str(cv_json.get(key))
+                if isinstance(cv_json.get(key), str):
+                    try:
+                        cv_json[key] = ast.literal_eval(cv_json[key])
+                    except Exception:
+                        cv_json[key] = []
 
             alignment = compute_alignment(cv_json, role_desc)
             score = compute_score(alignment)
