@@ -36,19 +36,6 @@ _CANONICAL = {
     "langchain": "langchain", "lang chain": "langchain",
     "chromadb": "chromadb", "chroma": "chromadb",
     "fastapi": "fastapi", "fast api": "fastapi",
-    "pyspark": "pyspark",
-    "apache spark": "spark", "spark": "spark",
-    "apache airflow": "airflow", "airflow": "airflow",
-    "databricks": "databricks",
-    "power bi": "power bi", "powerbi": "power bi",
-    "delta lake": "delta lake",
-    "azure devops": "azure devops",
-    "sql server": "sql server", "mssql": "sql server",
-    "palantir foundry": "palantir foundry",
-    "data factory": "data factory", "azure data factory": "data factory",
-    "r": "r-lang", "r language": "r-lang",
-    "go": "golang", "golang": "golang",
-    "etl": "etl", "elt": "elt",
 }
 
 _SENIORITY_KEYWORDS = {
@@ -225,77 +212,6 @@ CONCEPT_MAP = {
     "streaming": [
         "kafka", "flink", "spark streaming", "kinesis",
     ],
-    "etl": [
-        "spark", "pyspark", "airflow", "databricks", "data factory",
-        "dbt", "talend", "informatica",
-    ],
-    "elt": [
-        "spark", "pyspark", "airflow", "databricks", "data factory",
-        "dbt",
-    ],
-    "etl pipelines": [
-        "spark", "pyspark", "airflow", "databricks", "data factory",
-        "dbt", "talend", "informatica",
-    ],
-    "etl/elt": [
-        "spark", "pyspark", "airflow", "databricks", "data factory",
-        "dbt",
-    ],
-    "data warehouse": [
-        "bigquery", "snowflake", "redshift", "databricks", "delta lake",
-        "synapse",
-    ],
-    "data warehousing": [
-        "bigquery", "snowflake", "redshift", "databricks", "delta lake",
-        "synapse",
-    ],
-    "data lake": [
-        "delta lake", "databricks", "spark", "pyspark",
-    ],
-    "data modeling": [
-        "star schema", "snowflake schema", "dimensional modeling",
-        "er modeling", "normalization",
-    ],
-    "data governance": [
-        "palantir foundry", "databricks", "delta lake", "data lineage",
-    ],
-    "data orchestration": [
-        "airflow", "prefect", "dagster", "data factory",
-    ],
-    "bi tools": [
-        "power bi", "tableau", "looker", "metabase", "qlik",
-    ],
-    "bi": [
-        "power bi", "tableau", "looker", "metabase", "qlik",
-    ],
-    "business intelligence": [
-        "power bi", "tableau", "looker", "metabase", "qlik",
-    ],
-    "apache spark": [
-        "spark", "pyspark", "databricks",
-    ],
-    "pyspark": [
-        "pyspark", "spark", "databricks",
-    ],
-    "databricks": [
-        "databricks", "spark", "pyspark", "delta lake",
-    ],
-    "apache airflow": [
-        "airflow",
-    ],
-    "azure cloud services": [
-        "azure", "data factory", "azure devops",
-    ],
-    "azure cloud": [
-        "azure", "data factory", "azure devops",
-    ],
-    "devops": [
-        "docker", "kubernetes", "jenkins", "github actions", "gitlab ci",
-        "azure devops",
-    ],
-    "sql server": [
-        "sql server", "mssql",
-    ],
 }
 
 # Stop words for token-level matching — skipped when checking individual tokens
@@ -349,21 +265,12 @@ def _detect_seniority(text):
 # Role description parser (deterministic)
 
 _MUST_HAVE_RE = re.compile(
-    r"(?i)^[\s#*]*(must[\s\-]?have[s]?|required|requirements|key[\s\-]?requirements"
-    r"|technical[\s\-]?requirements|minimum[\s\-]?requirements"
-    r"|qualifications|core[\s\-]?competenc(?:ies|y)|prerequisites"
-    r"|expectations|needed|experience[\s\-]?required"
-    r"|(?:you|we)\s+(?:should|need|expect|require|are looking)"
-    r"|(?:what|skills)\s+you\s+bring"
-    r"|mandatory|essential|pflicht|anforderungen|voraussetzungen|erforderlich"
-    r"|ihr\s+profil|was\s+sie\s+mitbringen|was\s+du\s+mitbringst)[\s:]*"
+    r"(?i)^[\s#*]*(must[\s\-]?have[s]?|required|requirements|mandatory|essential"
+    r"|pflicht|anforderungen|voraussetzungen|erforderlich)[\s:]*"
 )
 _NICE_TO_HAVE_RE = re.compile(
     r"(?i)^[\s#*]*(nice[\s\-]?to[\s\-]?have|preferred|desired|desirable|bonus"
-    r"|optional|good[\s\-]?to[\s\-]?have|additional[\s\-]?skills"
-    r"|plus|it\s+would\s+be\s+(?:great|nice|good)"
-    r"|what\s+would\s+be\s+nice"
-    r"|w[uü]nschenswert|von\s+vorteil)[\s:]*"
+    r"|optional|w[uü]nschenswert|von\s+vorteil)[\s:]*"
 )
 _DOMAIN_RE = re.compile(
     r"(?i)^[\s#*]*(domain|industry|sector|branche)[\s:]+(.+)"
@@ -382,7 +289,7 @@ def _is_section_header(line):
     if s.endswith(":"):
         return True
     words = s.split()
-    if len(words) >= 2 and len(words) <= 5 and s.isupper():
+    if len(words) <= 5 and (s.isupper() or s.istitle()):
         return True
     return False
 
@@ -399,7 +306,7 @@ def _parse_skill_items(text):
         r"|strong|good|deep|solid|hands[\s\-]on)\s+(in|of|with)?\s*",
         "", text,
     )
-    items = re.split(r"[,;]", text)
+    items = re.split(r"[,;]|\s+/\s+", text)
     return [s.strip() for s in items if s.strip() and len(s.strip()) > 1]
 
 
@@ -407,7 +314,7 @@ def _parse_bullet_line(line):
     line = re.sub(r"^[\s\-\u2022*\u00b7\u25aa\u2192>]+", "", line).strip()
     if not line:
         return []
-    return [line]
+    return _parse_skill_items(line)
 
 
 def parse_role_description(text):
@@ -434,13 +341,7 @@ def parse_role_description(text):
             break
     if not result["role_title"]:
         for line in lines:
-            if not line:
-                continue
-            if _MUST_HAVE_RE.match(line) or _NICE_TO_HAVE_RE.match(line):
-                continue
-            if _DOMAIN_RE.match(line):
-                continue
-            if len(line) < 80:
+            if line and not _is_section_header(line) and len(line) < 120:
                 result["role_title"] = line
                 break
 
@@ -490,25 +391,6 @@ def parse_role_description(text):
     result["must_have"] = list(dict.fromkeys(result["must_have"]))
     result["nice_to_have"] = list(dict.fromkeys(result["nice_to_have"]))
     result["domain_hints"] = list(dict.fromkeys(result["domain_hints"]))
-
-    if not result["must_have"] and not result["nice_to_have"]:
-        for line in lines:
-            if not line:
-                continue
-            if line == result["role_title"]:
-                continue
-            if _is_section_header(line):
-                continue
-            if _DOMAIN_RE.match(line) or _TITLE_RE.match(line):
-                continue
-            cleaned = re.sub(r"^[\s\-\u2022*\u00b7\u25aa\u2192>]+", "", line).strip()
-            if cleaned and len(cleaned) > 1:
-                result["must_have"].append(cleaned)
-        result["must_have"] = list(dict.fromkeys(result["must_have"]))
-
-    if not result["must_have"] and not result["nice_to_have"] and result["role_title"]:
-        result["must_have"].append(result["role_title"])
-
     return result
 
 
@@ -554,23 +436,6 @@ def collect_candidate_terms(cv_json):
         for d in p.get("domains", []):
             if isinstance(d, str) and d.strip():
                 terms.add(_normalize(d))
-        for resp in p.get("responsibilities", []):
-            if not isinstance(resp, str) or not resp.strip():
-                continue
-            for token in re.split(r"[\s,;:()\[\]]+", resp):
-                token = token.strip(".-/\"'")
-                if len(token) >= 2:
-                    ns = _normalize_skill(token)
-                    if ns and ns not in _MATCH_STOP_WORDS:
-                        terms.add(ns)
-        overview = p.get("overview", "")
-        if isinstance(overview, str) and overview.strip():
-            for token in re.split(r"[\s,;:()\[\]]+", overview):
-                token = token.strip(".-/\"'")
-                if len(token) >= 2:
-                    ns = _normalize_skill(token)
-                    if ns and ns not in _MATCH_STOP_WORDS:
-                        terms.add(ns)
 
     for d in cv_json.get("domains", []):
         if isinstance(d, str) and d.strip():
@@ -611,17 +476,15 @@ def _match_requirement(req_text, candidate_terms):
             evidence.add(canonical_alt)
 
         # --- 2. Substring match for short alternatives (1-2 words) ---
-        if len(alt.split()) <= 2 and len(canonical_alt) >= 2:
+        if len(alt.split()) <= 2 and len(canonical_alt) >= 3:
             for c in candidate_terms:
-                if len(c) >= 2 and (canonical_alt in c or c in canonical_alt):
+                if len(c) >= 3 and (canonical_alt in c or c in canonical_alt):
                     evidence.add(c)
 
         # --- 3. Token-level exact match (skip stop words) ---
         tokens = alt.split()
         for token in tokens:
-            if token in _MATCH_STOP_WORDS:
-                continue
-            if len(token) < 2 and token not in _CANONICAL:
+            if len(token) < 2 or token in _MATCH_STOP_WORDS:
                 continue
             ct = _CANONICAL.get(token, token)
             if ct in candidate_terms:
