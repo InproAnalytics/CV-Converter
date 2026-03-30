@@ -266,7 +266,11 @@ def _detect_seniority(text):
 
 _MUST_HAVE_RE = re.compile(
     r"(?i)^[\s#*]*(must[\s\-]?have[s]?|required|requirements|mandatory|essential"
-    r"|pflicht|anforderungen|voraussetzungen|erforderlich)[\s:]*"
+    r"|key\s+requirements|key\s+competenc(?:ies|y)|core\s+competenc(?:ies|y)"
+    r"|qualifications|key\s+qualifications|technical\s+skills"
+    r"|your\s+profile|what\s+you\s+bring|what\s+we(?:'re|\s+are)\s+looking\s+for"
+    r"|pflicht|anforderungen|voraussetzungen|erforderlich"
+    r"|kernkompetenzen|ihr\s+profil|das\s+bringen\s+sie\s+mit)[\s:]*"
 )
 _NICE_TO_HAVE_RE = re.compile(
     r"(?i)^[\s#*]*(nice[\s\-]?to[\s\-]?have|preferred|desired|desirable|bonus"
