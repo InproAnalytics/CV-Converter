@@ -11,7 +11,7 @@ import tempfile
 import time
 
 from pdf_processor import prepare_cv_text, clean_cv_text
-from chatgpt_client import run_stage_based_parsing
+from chatgpt_client import ask_chatgpt_v2
 from postprocess import postprocess_filled_cv
 from alignment import compute_alignment
 import copy
@@ -101,12 +101,35 @@ def process_single_cv(pdf_bytes: bytes, filename: str, role_desc: str) -> dict:
             prepared_text, raw_text = prepare_cv_text(tmp_path)
             prepared_text = clean_cv_text(prepared_text)
 
-            stage_result = run_stage_based_parsing(prepared_text, model=MODEL)
-            if not stage_result.get("success"):
-                result["error"] = stage_result.get("error", "Parsing failed")
+            gpt_result = ask_chatgpt_v2(prepared_text, model=MODEL, detailed_responsibilities=True)
+            raw_resp = (gpt_result or {}).get("raw_response", "")
+            if not raw_resp:
+                result["error"] = "GPT returned empty response"
                 return result
 
-            cv_json = stage_result["json"]
+            cleaned_resp = raw_resp.strip()
+            if cleaned_resp.startswith("```"):
+                cleaned_resp = re.sub(r"^```(?:json)?\s*", "", cleaned_resp)
+                cleaned_resp = re.sub(r"\s*```\s*$", "", cleaned_resp)
+            brace_start = cleaned_resp.find("{")
+            if brace_start >= 0:
+                depth, i = 0, brace_start
+                in_str = False
+                while i < len(cleaned_resp):
+                    ch = cleaned_resp[i]
+                    if ch == '"' and (i == 0 or cleaned_resp[i - 1] != '\\'):
+                        in_str = not in_str
+                    elif not in_str:
+                        if ch == '{':
+                            depth += 1
+                        elif ch == '}':
+                            depth -= 1
+                            if depth == 0:
+                                cleaned_resp = cleaned_resp[brace_start:i + 1]
+                                break
+                    i += 1
+
+            cv_json = json.loads(cleaned_resp)
             cv_json = postprocess_filled_cv(cv_json, raw_text)
 
             alignment = compute_alignment(cv_json, role_desc)

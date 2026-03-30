@@ -665,9 +665,14 @@ _CV_SCHEMA_V2 = {
 }
 
 
-def ask_chatgpt_v2(text: str, model: str = "gpt-4.1-mini") -> dict:
+def ask_chatgpt_v2(text: str, model: str = "gpt-4.1-mini", detailed_responsibilities: bool = False) -> dict:
     """Optimized single-call CV extraction with compressed prompt."""
     schema_str = json.dumps(_CV_SCHEMA_V2, ensure_ascii=False, separators=(",", ":"))
+
+    if detailed_responsibilities:
+        resp_rule = "responsibilities:3-5 bullets,26-30 words each,action verb+mechanism+technical detail."
+    else:
+        resp_rule = "responsibilities:exactly 3 bullets,12-14 words each,action verb+method."
 
     prompt = f"""Extract structured data as JSON. Input may be any language; output English only.
 SCHEMA:{schema_str}
@@ -679,7 +684,7 @@ RULES:
 -languages:only explicitly stated+levels.No inference.
 -profile_summary:third-person technical,60-70 words max.
 -hard_skills:each tool in one category only.
--projects_experience:ALL projects.company=name only,no city.responsibilities:exactly 3 bullets,12-14 words each,action verb+method.tech_stack:max 5 tools.domains:max 1 industry,[]if unclear.
+-projects_experience:ALL projects.company=name only,no city.{resp_rule}tech_stack:max 5 tools.domains:max 1 industry,[]if unclear.
 -skills_overview:all tools by category.years_of_experience MUST be an integer inferred from project durations(e.g.1,2,3,5).Never empty.
 -All values proper JSON types.
 TEXT:{text}"""
