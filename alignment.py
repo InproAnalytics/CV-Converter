@@ -391,6 +391,14 @@ def parse_role_description(text):
     result["must_have"] = list(dict.fromkeys(result["must_have"]))
     result["nice_to_have"] = list(dict.fromkeys(result["nice_to_have"]))
     result["domain_hints"] = list(dict.fromkeys(result["domain_hints"]))
+
+    if not result["must_have"] and not result["nice_to_have"]:
+        for line in lines:
+            if not line:
+                continue
+            result["must_have"].extend(_parse_bullet_line(line))
+        result["must_have"] = list(dict.fromkeys(result["must_have"]))
+
     return result
 
 
