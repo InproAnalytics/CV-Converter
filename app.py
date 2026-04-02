@@ -922,7 +922,7 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
                 },
             )
 
-            merged_lang = _apply_data_editor_deltas(W_LANG, lang_edited if isinstance(lang_edited, list) else lang_rows)
+            merged_lang = lang_edited if isinstance(lang_edited, list) else lang_rows
             st.session_state[DATA_LANG] = merged_lang
             edited["languages"] = merged_lang
 
@@ -976,7 +976,7 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
                 },
             )
 
-            merged_edu = _apply_data_editor_deltas(W_EDU, edu_edited if isinstance(edu_edited, list) else edu_rows)
+            merged_edu = edu_edited if isinstance(edu_edited, list) else edu_rows
             st.session_state[DATA_EDU] = merged_edu
             edited["education"] = merged_edu
 
