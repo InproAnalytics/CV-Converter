@@ -908,6 +908,9 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
             lang_rows = [lang_row_to_editor(r) for r in lang_rows if isinstance(r, dict)]
             if not lang_rows:
                 lang_rows = [{"Sprache": "", "Niveau": ""}]
+
+            lang_rows = _apply_data_editor_deltas(W_LANG, lang_rows)
+            lang_rows = [lang_row_to_editor(r) for r in lang_rows if isinstance(r, dict)]
             st.session_state[DATA_LANG] = lang_rows
 
             lang_edited = st.data_editor(
@@ -922,7 +925,9 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
                 },
             )
 
-            merged_lang = lang_edited if isinstance(lang_edited, list) else lang_rows
+            normalized_lang = [lang_row_to_editor(r) for r in lang_edited if isinstance(r, dict)] if isinstance(lang_edited, list) else lang_rows
+            merged_lang = _apply_data_editor_deltas(W_LANG, normalized_lang)
+            merged_lang = [lang_row_to_editor(r) for r in merged_lang if isinstance(r, dict)]
             st.session_state[DATA_LANG] = merged_lang
             edited["languages"] = merged_lang
 
@@ -961,6 +966,9 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
             edu_rows = [edu_row_to_editor(r) for r in edu_rows if isinstance(r, dict)]
             if not edu_rows:
                 edu_rows = [{"Institution": "", "Abschluss": "", "Jahr": ""}]
+
+            edu_rows = _apply_data_editor_deltas(W_EDU, edu_rows)
+            edu_rows = [edu_row_to_editor(r) for r in edu_rows if isinstance(r, dict)]
             st.session_state[DATA_EDU] = edu_rows
 
             edu_edited = st.data_editor(
@@ -976,7 +984,9 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
                 },
             )
 
-            merged_edu = edu_edited if isinstance(edu_edited, list) else edu_rows
+            normalized_edu = [edu_row_to_editor(r) for r in edu_edited if isinstance(r, dict)] if isinstance(edu_edited, list) else edu_rows
+            merged_edu = _apply_data_editor_deltas(W_EDU, normalized_edu)
+            merged_edu = [edu_row_to_editor(r) for r in merged_edu if isinstance(r, dict)]
             st.session_state[DATA_EDU] = merged_edu
             edited["education"] = merged_edu
 
