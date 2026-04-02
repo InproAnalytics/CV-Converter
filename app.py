@@ -879,6 +879,11 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
         # Languages
         # -------------------------
         with st.expander("Sprachen", expanded=False):
+            W_LANG = "W_languages_editor"
+            DATA_LANG = "DATA_languages_rows"
+
+            _reset_editor_widget_key_if_corrupt(W_LANG)
+
             def lang_row_to_editor(row):
                 if not isinstance(row, dict):
                     return {"Sprache": "", "Niveau": ""}
@@ -895,30 +900,41 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
             initial_lang_rows = edited.get("languages", [])
             if not isinstance(initial_lang_rows, list):
                 initial_lang_rows = []
+            initial_lang_rows = [lang_row_to_editor(r) for r in initial_lang_rows]
+            if not initial_lang_rows:
+                initial_lang_rows = [{"Sprache": "", "Niveau": ""}]
 
-            lang_rows = [lang_row_to_editor(r) for r in initial_lang_rows]
+            lang_rows = _ensure_data_rows(DATA_LANG, initial_lang_rows)
+            lang_rows = [lang_row_to_editor(r) for r in lang_rows if isinstance(r, dict)]
             if not lang_rows:
                 lang_rows = [{"Sprache": "", "Niveau": ""}]
+            st.session_state[DATA_LANG] = lang_rows
 
             lang_edited = st.data_editor(
                 lang_rows,
                 num_rows="dynamic",
                 width="stretch",
                 hide_index=True,
-                key="ed_languages_main",
+                key=W_LANG,
                 column_config={
                     "Sprache": st.column_config.TextColumn("Sprache"),
                     "Niveau": st.column_config.TextColumn("Niveau"),
                 },
             )
 
-            merged_lang = _apply_data_editor_deltas("ed_languages_main", lang_edited if isinstance(lang_edited, list) else lang_rows)
+            merged_lang = _apply_data_editor_deltas(W_LANG, lang_edited if isinstance(lang_edited, list) else lang_rows)
+            st.session_state[DATA_LANG] = merged_lang
             edited["languages"] = merged_lang
 
         # -------------------------
         # Education
         # -------------------------
         with st.expander("Ausbildung (Education)", expanded=False):
+            W_EDU = "W_education_editor"
+            DATA_EDU = "DATA_education_rows"
+
+            _reset_editor_widget_key_if_corrupt(W_EDU)
+
             def edu_row_to_editor(row):
                 if not isinstance(row, dict):
                     return {"Institution": "", "Abschluss": "", "Jahr": ""}
@@ -937,17 +953,22 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
             initial_edu = edited.get("education", [])
             if not isinstance(initial_edu, list):
                 initial_edu = []
+            initial_edu = [edu_row_to_editor(r) for r in initial_edu]
+            if not initial_edu:
+                initial_edu = [{"Institution": "", "Abschluss": "", "Jahr": ""}]
 
-            edu_rows = [edu_row_to_editor(r) for r in initial_edu]
+            edu_rows = _ensure_data_rows(DATA_EDU, initial_edu)
+            edu_rows = [edu_row_to_editor(r) for r in edu_rows if isinstance(r, dict)]
             if not edu_rows:
                 edu_rows = [{"Institution": "", "Abschluss": "", "Jahr": ""}]
+            st.session_state[DATA_EDU] = edu_rows
 
             edu_edited = st.data_editor(
                 edu_rows,
                 num_rows="dynamic",
                 width="stretch",
                 hide_index=True,
-                key="ed_education_main",
+                key=W_EDU,
                 column_config={
                     "Institution": st.column_config.TextColumn("Institution/Universität"),
                     "Abschluss": st.column_config.TextColumn("Abschluss/Fachrichtung"),
@@ -955,7 +976,8 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
                 },
             )
 
-            merged_edu = _apply_data_editor_deltas("ed_education_main", edu_edited if isinstance(edu_edited, list) else edu_rows)
+            merged_edu = _apply_data_editor_deltas(W_EDU, edu_edited if isinstance(edu_edited, list) else edu_rows)
+            st.session_state[DATA_EDU] = merged_edu
             edited["education"] = merged_edu
 
         # --- V3 Text Summary (optional) ---
@@ -1138,12 +1160,14 @@ if "filled_json" in st.session_state and isinstance(st.session_state["filled_jso
             sk_rows_now = _apply_data_editor_deltas("W_skills_overview_editor", sk_rows_now if isinstance(sk_rows_now, list) else [])
             st.session_state["DATA_skills_overview_rows"] = sk_rows_now
 
-            lang_rows_now = final_json.get("languages", [])
-            lang_rows_now = _apply_data_editor_deltas("ed_languages_main", lang_rows_now if isinstance(lang_rows_now, list) else [])
+            lang_rows_now = st.session_state.get("DATA_languages_rows", final_json.get("languages", []))
+            lang_rows_now = _apply_data_editor_deltas("W_languages_editor", lang_rows_now if isinstance(lang_rows_now, list) else [])
+            st.session_state["DATA_languages_rows"] = lang_rows_now
             final_json["languages"] = lang_rows_now
 
-            edu_rows_now = final_json.get("education", [])
-            edu_rows_now = _apply_data_editor_deltas("ed_education_main", edu_rows_now if isinstance(edu_rows_now, list) else [])
+            edu_rows_now = st.session_state.get("DATA_education_rows", final_json.get("education", []))
+            edu_rows_now = _apply_data_editor_deltas("W_education_editor", edu_rows_now if isinstance(edu_rows_now, list) else [])
+            st.session_state["DATA_education_rows"] = edu_rows_now
             final_json["education"] = edu_rows_now
 
             # normalize languages to {language, level}
