@@ -101,7 +101,7 @@ def process_single_cv(pdf_bytes: bytes, filename: str, role_desc: str) -> dict:
             prepared_text, raw_text = prepare_cv_text(tmp_path)
             prepared_text = clean_cv_text(prepared_text)
 
-            gpt_result = ask_chatgpt_v2(prepared_text, model=MODEL, detailed_responsibilities=True)
+            gpt_result = ask_chatgpt_v2(prepared_text, model=MODEL)
             raw_resp = (gpt_result or {}).get("raw_response", "")
             if not raw_resp:
                 result["error"] = "GPT returned empty response"

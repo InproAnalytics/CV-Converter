@@ -1,6 +1,7 @@
 import re
 import json
 import ast
+import logging
 from collections import defaultdict
 from datetime import datetime
 
@@ -478,7 +479,49 @@ def postprocess_filled_cv(data: dict, original_text: str = "") -> dict:
                 project["duration"] = f"{start} – {end}"
             else:
                 project["duration"] = ""
+
+    validate_extraction_fidelity(data, original_text, cv_id=data.get("full_name", "unknown"))
+
     return data
+
+
+def _count_source_bullets(source_text: str) -> int:
+    bullet_pattern = re.compile(
+        r"^\s*(?:[•\-–—*○▪▸►]|\d+[.)]\s)\s*.+", re.MULTILINE
+    )
+    return len(bullet_pattern.findall(source_text))
+
+
+def validate_extraction_fidelity(data: dict, original_text: str, cv_id: str = "unknown") -> None:
+    if not original_text:
+        return
+
+    source_bullet_count = _count_source_bullets(original_text)
+    output_bullet_count = sum(
+        len(p.get("responsibilities", []))
+        for p in data.get("projects_experience", [])
+        if isinstance(p, dict)
+    )
+
+    if source_bullet_count > 0 and output_bullet_count < source_bullet_count * 0.5:
+        logging.warning(
+            f"[CV fidelity] cv_id={cv_id} — responsibility loss detected: "
+            f"source≈{source_bullet_count} bullets, output={output_bullet_count} bullets "
+            f"({round(output_bullet_count / source_bullet_count * 100)}% retained). "
+            "CV may need manual review."
+        )
+
+    for project in data.get("projects_experience", []):
+        if not isinstance(project, dict):
+            continue
+        title = project.get("project_title", "?")
+        tech = project.get("tech_stack", [])
+        if isinstance(tech, list) and len(tech) > 30:
+            logging.warning(
+                f"[CV fidelity] cv_id={cv_id} project='{title}' — "
+                f"tech_stack has {len(tech)} tools (safety cap at 30 applied)."
+            )
+            project["tech_stack"] = tech[:30]
 
 
 # ===============================================
@@ -587,8 +630,7 @@ def format_responsibilities(responsibilities):
         if current_bullet:
             formatted.append(' '.join(current_bullet))
     
-    # Limit to 5 bullets
-    if len(formatted) > 5:
-        formatted = formatted[:5]
-    
+    if len(formatted) > 25:
+        formatted = formatted[:25]
+
     return formatted

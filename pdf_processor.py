@@ -220,7 +220,7 @@ def prepare_cv_text(pdf_path: str, cache_dir="data_output") -> tuple[str, str]:
     # Remove any existing date tags
     tagged_text = re.sub(r'\[DATE\]|\[/DATE\]', '', tagged_text)
 
-    tagged_text = re.sub(r"[^\w\s\.\-/–—:,]", " ", tagged_text) 
+    tagged_text = re.sub(r"[^\w\s\.\-/–—:,#+]", " ", tagged_text)
     tagged_text = re.sub(r"\s{3,}", "\n", tagged_text)
     tagged_text = re.sub(r"[ \t]+", " ", tagged_text)
     tagged_text = re.sub(r"\n{2,}", "\n", tagged_text)
@@ -240,7 +240,7 @@ def prepare_cv_text(pdf_path: str, cache_dir="data_output") -> tuple[str, str]:
         f.write(final_text)
 
     # Lightweight cleanup for raw_text
-    raw_text = re.sub(r"[^\w\s\.\-/–—:,]", " ", raw_text)
+    raw_text = re.sub(r"[^\w\s\.\-/–—:,#+]", " ", raw_text)
     raw_text = re.sub(r"\s{3,}", "\n", raw_text)
     raw_text = re.sub(r"[ \t]+", " ", raw_text)
     raw_text = re.sub(r"\n{2,}", "\n", raw_text)

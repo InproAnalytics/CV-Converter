@@ -657,40 +657,60 @@ _CV_SCHEMA_V2 = {
         "infrastructure_os": [], "other_tools": []
     },
     "projects_experience": [{
-        "project_title": "", "company": "", "role": "", "duration": "",
+        "project_title": "", "company": "", "overview": "", "role": "", "duration": "",
         "responsibilities": [], "tech_stack": [], "domains": []
     }],
     "skills_overview": [{"category": "", "tools": [], "years_of_experience": ""}],
     "website": ""
 }
 
+_SKILL_TAXONOMY = (
+    "programming_languages:Python,Java,C#,C++,JavaScript,TypeScript,R,Scala,Go,Kotlin,SQL,Bash,PowerShell,VBA,MATLAB,F#,Ruby,Swift,Rust|"
+    "backend:Django,Flask,FastAPI,Spring,.NET,ASP.NET,Node.js,REST API,GraphQL,gRPC,Hibernate,Express,Rails|"
+    "frontend:React,Angular,Vue.js,HTML,CSS,Bootstrap,jQuery,Svelte,Next.js,D3.js,Flutter|"
+    "databases:PostgreSQL,MySQL,Oracle DB,SQL Server,MongoDB,Redis,Cassandra,Elasticsearch,Snowflake,BigQuery,Redshift,Teradata,DynamoDB,SQLite,Cosmos DB,Hbase|"
+    "data_engineering:Apache Spark,Kafka,Airflow,dbt,Databricks,Hadoop,Hive,Flink,NiFi,Informatica,SSIS,Talend,DataStage,Ab Initio,Pentaho,Azure Data Factory,AWS Glue|"
+    "etl_tools:SSIS,Informatica PowerCenter,Talend,Pentaho,DataStage,Ab Initio — use only if tool is exclusively ETL and not in data_engineering|"
+    "bi_tools:Power BI,Tableau,QlikView,QlikSense,Looker,MicroStrategy,SAP BusinessObjects,SSRS,Crystal Reports|"
+    "analytics:Excel,pandas,NumPy,Jupyter,R Studio,SPSS,SAS,Google Analytics,Matplotlib,Seaborn,Plotly|"
+    "cloud_platforms:AWS,Azure,GCP,Google Cloud,Heroku,IBM Cloud,Oracle Cloud,Alibaba Cloud|"
+    "devops_iac:Terraform,Ansible,Puppet,Chef,CloudFormation,Pulumi,Azure Bicep,CDK|"
+    "ci_cd_tools:Jenkins,GitLab CI,GitHub Actions,Azure DevOps,CircleCI,TeamCity,Bamboo,ArgoCD,Travis CI|"
+    "containers_orchestration:Docker,Kubernetes,OpenShift,Helm,Rancher,Docker Compose,ECS,EKS,AKS,GKE|"
+    "monitoring_security:Prometheus,Grafana,Datadog,Splunk,ELK Stack,New Relic,Dynatrace,Zabbix,AppDynamics|"
+    "security:OAuth,LDAP,Keycloak,Vault,SSL/TLS,SIEM,IAM,PenTesting,OWASP — use for dedicated security tools only|"
+    "ai_ml_tools:TensorFlow,PyTorch,scikit-learn,Keras,MLflow,Hugging Face,LangChain,OpenAI API,XGBoost,LightGBM,NLTK,spaCy|"
+    "infrastructure_os:Linux,Ubuntu,Windows Server,RHEL,CentOS,VMware,Nginx,Apache,Active Directory,vSphere|"
+    "other_tools:Git,Jira,Confluence,Figma,SharePoint,Salesforce,SAP ERP,MS Office,Postman,Swagger — use for anything not fitting above"
+)
 
-def ask_chatgpt_v2(text: str, model: str = "gpt-4.1-mini", detailed_responsibilities: bool = False) -> dict:
-    """Optimized single-call CV extraction with compressed prompt."""
+
+def ask_chatgpt_v2(text: str, model: str = "gpt-4.1-mini") -> dict:
+    """Full-fidelity CV extraction with consulting-grade responsibility enrichment."""
     schema_str = json.dumps(_CV_SCHEMA_V2, ensure_ascii=False, separators=(",", ":"))
-
-    if detailed_responsibilities:
-        resp_rule = "responsibilities:3-5 bullets,26-30 words each,action verb+mechanism+technical detail."
-    else:
-        resp_rule = "responsibilities:exactly 3 bullets,12-14 words each,action verb+method."
 
     prompt = f"""Extract structured data as JSON. Input may be any language; output English only.
 SCHEMA:{schema_str}
 RULES:
 -Valid JSON only. No markdown/comments.
--Never invent data. Unknown=""or[].
+-Never invent data not present in the source. Unknown=""or[].
+-Preserve special characters exactly: C#, C++, .NET, F#, Node.js, etc.
 -Dates:copy exactly,no reformatting.
--education:all entries,exact degree/institution/year.
--languages:only explicitly stated+levels.No inference.
+-education:ALL entries,exact degree/institution/year.
+-languages:only explicitly stated+levels. No inference.
 -profile_summary:third-person technical,60-70 words max.
--hard_skills:each tool in one category only.
--projects_experience:ALL projects.company=name only,no city.{resp_rule}tech_stack:max 5 tools.domains:max 1 industry,[]if unclear.
+-hard_skills:assign each tool to exactly ONE category using this taxonomy:{_SKILL_TAXONOMY}
+-projects_experience:ALL projects,none skipped.company=name only,no city.
+  overview:2-4 sentence consulting summary(60-120 words):project scope,business domain,system landscape,consultant role. Preserve source description if present;otherwise synthesize from responsibilities and tech stack. Strictly factual,no fabrication.
+  responsibilities:Extract EVERY responsibility bullet from the source — do NOT drop,merge,or skip any. Rewrite each in consulting-engagement style(20-35 words):action verb+what was done+technical mechanism or context. Expand terse bullets ONLY using context explicitly present elsewhere in this CV(same project overview,tech stack,role). Never invent metrics,tools,or outcomes.
+  tech_stack:ALL tools listed in the project environment/tech section — include every tool mentioned,no cap.
+  domains:max 1 industry,[]if unclear.
 -skills_overview:all tools by category.years_of_experience MUST be an integer inferred from project durations(e.g.1,2,3,5).Never empty.
 -All values proper JSON types.
 TEXT:{text}"""
 
     messages = [
-        {"role": "system", "content": "Expert CV parser. Extract faithfully. Never invent."},
+        {"role": "system", "content": "Expert CV parser. Extract every detail faithfully. Never invent or omit."},
         {"role": "user", "content": prompt},
     ]
 
@@ -699,12 +719,16 @@ TEXT:{text}"""
             model=model,
             messages=messages,
             temperature=0.1,
+            max_tokens=16000,
         )
-        raw = response.choices[0].message.content
+        choice = response.choices[0]
+        raw = choice.message.content
+        finish_reason = choice.finish_reason
 
+        if finish_reason != "stop":
+            logging.warning(f"GPT v2 finish_reason={finish_reason} — response may be truncated. Consider a smaller CV or a higher-context model.")
 
-
-        return {"raw_response": raw, "mode": "details_v2", "prompt": prompt}
+        return {"raw_response": raw, "mode": "details_v2", "prompt": prompt, "finish_reason": finish_reason}
     except Exception as e:
         logging.error(f"GPT v2 error: {e}")
         return {"raw_response": "", "error": str(e)}
