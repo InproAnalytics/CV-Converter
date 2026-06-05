@@ -423,13 +423,24 @@ class RoundedCard(Flowable):
         innerW = max(1, innerW)
 
         NATURAL_H = 1_000_000
-        kif = KeepInFrame(innerW, NATURAL_H, self.content, mode="shrink")
-        w, h = kif.wrapOn(self.canv, innerW, NATURAL_H)
+        natural_kif = KeepInFrame(innerW, NATURAL_H, self.content, mode="shrink")
+        _, natural_h = natural_kif.wrapOn(self.canv, innerW, NATURAL_H)
+        natural_h = max(1, natural_h)
+        natural_total = natural_h + 2 * self.padding + border
 
-        h = max(1, h)
-
-        self._inner = kif
-        self._height = max(1, h + 2 * self.padding + border)
+        if natural_total <= availH:
+            self._inner = natural_kif
+            self._height = natural_total
+        elif availH > 500:
+            inner_h = max(1, availH - 2 * self.padding - border)
+            kif = KeepInFrame(innerW, inner_h, self.content, mode="shrink")
+            _, h = kif.wrapOn(self.canv, innerW, inner_h)
+            h = max(1, h)
+            self._inner = kif
+            self._height = max(1, h + 2 * self.padding + border)
+        else:
+            self._inner = natural_kif
+            self._height = natural_total
 
         return self._outerW + border, self._height
 
