@@ -618,11 +618,12 @@ def make_projects_section(projects, styles):
 
         # --- Add cards to the flow ---
         if not first_card_done:
-            elements.append(KeepTogether([section_title, Spacer(1, 10), card, Spacer(1, 20)]))
+            elements.append(KeepTogether([section_title, Spacer(1, 10)]))
+            elements.extend([card, Spacer(1, 20)])
             first_card_done = True
             cards_on_page = 1
         else:
-            elements.append(KeepTogether([card, Spacer(1, 20)]))
+            elements.extend([card, Spacer(1, 20)])
             cards_on_page += 1
 
         # --- Two cards per page ---
