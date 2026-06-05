@@ -697,15 +697,17 @@ RULES:
 -Preserve special characters exactly: C#, C++, .NET, F#, Node.js, etc.
 -Dates:copy exactly,no reformatting.
 -education:ALL entries,exact degree/institution/year.
--languages:only explicitly stated+levels. No inference.
+-languages:SPOKEN HUMAN LANGUAGES ONLY (English,German,Spanish,French,Mandarin,Albanian,etc.) explicitly stated as spoken/fluent/native. NEVER include programming languages (Python,Java,C#,JavaScript,etc.),frameworks,tools,or technologies. If the source CV does not have a dedicated "Languages" section for spoken languages,return []. Do NOT infer from country of origin or location.
 -profile_summary:third-person technical,60-70 words max.
--hard_skills:assign each tool to exactly ONE category using this taxonomy:{_SKILL_TAXONOMY}
--projects_experience:ALL projects,none skipped.company=name only,no city.
+-hard_skills:assign each tool to exactly ONE category using this taxonomy:{_SKILL_TAXONOMY}. Only include tools EXPLICITLY mentioned in the source CV.
+-projects_experience:ALL projects,none skipped.
+  company=actual employer/client name only,no city. If the project appears under a parent company (e.g. "Globant" with sub-projects "4Insite","Squarespace"),the company is the parent name. NEVER leave empty if the source mentions any employer.
   overview:2-4 sentence consulting summary(60-120 words):project scope,business domain,system landscape,consultant role. Preserve source description if present;otherwise synthesize from responsibilities and tech stack. Strictly factual,no fabrication.
   responsibilities:Extract EVERY responsibility bullet from the source — do NOT drop,merge,or skip any. Rewrite each in consulting-engagement style(20-35 words):action verb+what was done+technical mechanism or context. Expand terse bullets ONLY using context explicitly present elsewhere in this CV(same project overview,tech stack,role). Never invent metrics,tools,or outcomes.
   tech_stack:ALL tools listed in the project environment/tech section — include every tool mentioned,no cap.
+  duration:If end-date < start-date in the source,fix it by swapping or correcting the obvious typo (e.g. "Jun – Mar 2022" likely means "Mar – Jun 2022"). Never output a duration where the end is before the start.
   domains:max 1 industry,[]if unclear.
--skills_overview:all tools by category.years_of_experience MUST be an integer inferred from project durations(e.g.1,2,3,5).Never empty.
+-skills_overview:CRITICAL — include ONLY tools EXPLICITLY mentioned somewhere in the source CV text. Do NOT add common tools by inference (no Excel,Jupyter,NumPy,pandas unless the source actually lists them). Group by category. years_of_experience MUST be an integer inferred from project durations(e.g.1,2,3,5).Never empty.
 -All values proper JSON types.
 TEXT:{text}"""
 

@@ -488,6 +488,7 @@ def make_projects_section(projects, styles):
     for idx, project in enumerate(projects, 1):
         # Normalize (editors often return None)
         title = (project.get("project_title") or "").strip()
+        company = (project.get("company") or "").strip()
         role = (project.get("role") or "").strip()
         overview = (project.get("overview") or "").strip()
         duration = (project.get("duration") or "").strip()
@@ -508,8 +509,9 @@ def make_projects_section(projects, styles):
 
         # --- Card header ---
         header = f"<b>Project {idx}. {title}</b>"
-        if role:
-            header += f'<br/><font size="11" color="#888888">{role}</font>'
+        role_company_parts = [p for p in [role, company] if p]
+        if role_company_parts:
+            header += f'<br/><font size="11" color="#888888">{" · ".join(role_company_parts)}</font>'
         if duration:
             header += f'<br/><font name="Roboto-Italic" size="10" color="#2196F3">{duration}</font>'
         header_p = Paragraph(header, project_card_title_style)

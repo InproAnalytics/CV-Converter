@@ -9,6 +9,17 @@ from datetime import datetime
 # 🔤 Languages
 # ===============================================
 
+_NON_SPOKEN_LANGUAGE_TOKENS = {
+    "python", "java", "c", "c#", "c++", "csharp", "cplusplus", "javascript", "typescript",
+    "js", "ts", "ruby", "go", "golang", "rust", "kotlin", "swift", "scala", "php",
+    "perl", "r", "matlab", "bash", "shell", "powershell", "vba", "f#", "fsharp",
+    "dart", "objective-c", "html", "css", "sql", "ios", "android", "node.js", "nodejs",
+    ".net", "dotnet", "assembly", "haskell", "elixir", "erlang", "lua", "groovy",
+    "clojure", "lisp", "fortran", "cobol", "pascal", "ada", "julia", "ocaml", "racket",
+    "scheme", "smalltalk", "vbscript", "abap", "apex", "solidity",
+}
+
+
 def unify_languages(langs, original_text=None):
     normalized = []
 
@@ -22,7 +33,7 @@ def unify_languages(langs, original_text=None):
         level = entry.get("level", "").strip()
         if not level:
             level = "Unspecified"
-        if lang:
+        if lang and lang.lower() not in _NON_SPOKEN_LANGUAGE_TOKENS:
             normalized.append({"language": lang, "level": level})
 
     if not normalized and original_text:
@@ -114,6 +125,52 @@ def unify_durations(projects):
             project["duration"] = f"{y1} – {y2}"
 
     return projects
+
+_MONTH_TO_NUM = {
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
+
+
+def _parse_endpoint(text: str):
+    s = str(text or "").strip()
+    if not s or s.lower() == "present":
+        return None
+    m = re.match(r"^([A-Za-z]{3})[a-z]*\s+(\d{4})$", s)
+    if m:
+        mon = _MONTH_TO_NUM.get(m.group(1).lower())
+        year = int(m.group(2))
+        if mon:
+            return year * 12 + mon
+    m = re.match(r"^(\d{4})$", s)
+    if m:
+        return int(m.group(1)) * 12 + 6
+    return None
+
+
+def fix_inverted_durations(projects):
+    if not isinstance(projects, list):
+        return projects
+    for project in projects:
+        if not isinstance(project, dict):
+            continue
+        duration = str(project.get("duration", "") or "").strip()
+        if not duration or "–" not in duration:
+            continue
+        parts = [p.strip() for p in duration.split("–", 1)]
+        if len(parts) != 2:
+            continue
+        start_raw, end_raw = parts
+        if end_raw.lower() == "present":
+            continue
+        start_v = _parse_endpoint(start_raw)
+        end_v = _parse_endpoint(end_raw)
+        if start_v is None or end_v is None:
+            continue
+        if start_v > end_v:
+            project["duration"] = f"{end_raw} – {start_raw}"
+    return projects
+
 
 def normalize_year(text: str) -> str:
     """
@@ -262,6 +319,54 @@ def generate_skills_overview(skills_overview_raw):
 
     return final_overview
 
+def _tool_in_text(tool: str, text_lower: str) -> bool:
+    t = re.sub(r"\s+", " ", str(tool or "").strip().lower())
+    if not t:
+        return False
+    if t in text_lower:
+        return True
+    base = re.sub(r"[\.\-_/\+#]+", " ", t).strip()
+    if base and base in text_lower:
+        return True
+    nospace = base.replace(" ", "")
+    if nospace and nospace in re.sub(r"\s+", "", text_lower):
+        return True
+    return False
+
+
+def strip_hallucinated_tools(skills, original_text):
+    if not original_text or not isinstance(skills, list):
+        return skills
+    text_lower = str(original_text).lower()
+    cleaned = []
+    for item in skills:
+        if not isinstance(item, dict):
+            continue
+        tools = item.get("tools", [])
+        if not isinstance(tools, list):
+            tools = []
+        kept = [t for t in tools if _tool_in_text(t, text_lower)]
+        if kept:
+            new_item = dict(item)
+            new_item["tools"] = kept
+            cleaned.append(new_item)
+    return cleaned
+
+
+def strip_hallucinated_hard_skills(hard_skills, original_text):
+    if not original_text or not isinstance(hard_skills, dict):
+        return hard_skills
+    text_lower = str(original_text).lower()
+    cleaned = {}
+    for cat, tools in hard_skills.items():
+        if not isinstance(tools, list):
+            continue
+        kept = [t for t in tools if _tool_in_text(t, text_lower)]
+        if kept:
+            cleaned[cat] = kept
+    return cleaned
+
+
 def filter_skills_overview(skills):
     seen = set()
     filtered = []
@@ -406,13 +511,19 @@ def postprocess_filled_cv(data: dict, original_text: str = "") -> dict:
     # Apply duration normalization/fixes
     data["projects_experience"] = unify_durations(data.get("projects_experience", []))
     data["projects_experience"] = fix_open_date_ranges(data["projects_experience"])
+    data["projects_experience"] = fix_inverted_durations(data["projects_experience"])
+
+    # Languages: strip programming languages, dedupe
+    data["languages"] = unify_languages(data.get("languages", []), original_text)
 
     # Skills
     data["hard_skills"] = clean_duplicates_in_skills(data.get("hard_skills", {}))
+    data["hard_skills"] = strip_hallucinated_hard_skills(data.get("hard_skills", {}), original_text)
 
     # Skills overview
     flat_skills = split_skills_overview_rows(data.get("skills_overview", []))
     reconstructed = generate_skills_overview(flat_skills)
+    reconstructed = strip_hallucinated_tools(reconstructed, original_text)
     data["skills_overview"] = filter_skills_overview(reconstructed)
 
     # Project domains (hybrid: GPT output + fallback via keywords per project)

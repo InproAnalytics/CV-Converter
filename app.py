@@ -166,13 +166,16 @@ def _extract_domains_from_projects(rows: list[dict]) -> list[str]:
     return sorted(out)
 
 
+_GENERIC_COMPANY_TOKENS = {"contractor", "contract", "various", "various locations", "freelance", "remote", "n/a", "unknown"}
+
+
 def _extract_companies_from_projects(rows: list[dict]) -> list[str]:
     out = set()
     for p in rows if isinstance(rows, list) else []:
         if not isinstance(p, dict):
             continue
         c = str(p.get("company", "") or "").strip()
-        if c:
+        if c and c.lower() not in _GENERIC_COMPANY_TOKENS:
             out.add(c)
     return sorted(out)
 
