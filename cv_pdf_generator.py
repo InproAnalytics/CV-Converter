@@ -414,22 +414,18 @@ class RoundedCard(Flowable):
         self._outerW = width  # actual width used in draw()
 
     def wrap(self, availW, availH):
-        # Small epsilon to ensure we never exceed the frame width
         EPS = 1.0
         border = self.strokeWidth * 2
 
-        # ⬅️ KEY: the card must NOT be wider than the frame (otherwise LayoutError)
         self._outerW = max(1, availW - border - EPS)
 
         innerW = self._outerW - 2 * self.padding
         innerW = max(1, innerW)
 
-        innerH = max(1, availH - 2 * self.padding)
+        NATURAL_H = 1_000_000
+        kif = KeepInFrame(innerW, NATURAL_H, self.content, mode="shrink")
+        w, h = kif.wrapOn(self.canv, innerW, NATURAL_H)
 
-        kif = KeepInFrame(innerW, innerH, self.content, mode="shrink")
-        w, h = kif.wrapOn(self.canv, innerW, innerH)
-
-        # KeepInFrame may return 0 height for empty content, which breaks layout
         h = max(1, h)
 
         self._inner = kif
