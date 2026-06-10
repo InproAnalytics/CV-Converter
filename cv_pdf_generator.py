@@ -166,7 +166,7 @@ def format_category_name(key: str) -> str:
     }.get(key, key.replace("_", " ").title())
 
 # --- Sections ---
-def make_left_box(data, styles):
+def make_left_box(data, styles, max_w=0, max_h=0):
     items = []
     header_style = ParagraphStyle("LeftHeader", parent=styles["Heading3"], fontName=BOLD_FONT, spaceAfter=6)
 
@@ -212,12 +212,12 @@ def make_left_box(data, styles):
         items.append(p("<br/>".join(companies), styles["Normal"]))
         items.append(Spacer(0, 6))
 
-    return KeepInFrame(0, 0, items, mode="shrink")
+    return KeepInFrame(max_w, max_h, items, mode="shrink")
 
-def make_right_box(data, styles):
+def make_right_box(data, styles, max_w=0, max_h=0):
     text = data.get("profile_summary", "") or ""
     body = [p(text, ParagraphStyle("Summary", parent=styles["Normal"], leading=16))]
-    return KeepInFrame(0, 0, body, mode="shrink")
+    return KeepInFrame(max_w, max_h, body, mode="shrink")
 
 def make_overview_box(data, styles):
     """
@@ -334,15 +334,18 @@ def make_first_page_section(data, styles):
     email = data.get("email", "")
     phone = data.get("phone", "")
 
-    # --- Left column (Education, Languages, Domains) ---
-    left_box = make_left_box(data, styles)
-
-    # --- Right column (Profile Summary) ---
-    right_box = make_right_box(data, styles)
-
-    # --- Two-column table ---
     left_w = 70 * mm
     right_w = 90 * mm
+
+    cell_pad = 12
+    MAX_BOX_H = 690
+
+    # --- Left column (Education, Languages, Domains) ---
+    left_box = make_left_box(data, styles, max_w=left_w - cell_pad, max_h=MAX_BOX_H)
+
+    # --- Right column (Profile Summary) ---
+    right_box = make_right_box(data, styles, max_w=right_w - cell_pad, max_h=MAX_BOX_H)
+
     table = Table([[left_box, right_box]], colWidths=[left_w, right_w], hAlign="LEFT")
     table.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
