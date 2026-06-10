@@ -428,14 +428,16 @@ class RoundedCard(Flowable):
         natural_h = max(1, natural_h)
         natural_total = natural_h + 2 * self.padding + border
 
+        FRESH_PAGE_MIN = 200
+
         if natural_total <= availH:
             self._inner = natural_kif
             self._height = natural_total
-        elif availH > 500:
+        elif availH >= FRESH_PAGE_MIN:
             inner_h = max(1, availH - 2 * self.padding - border)
             kif = KeepInFrame(innerW, inner_h, self.content, mode="shrink")
             _, h = kif.wrapOn(self.canv, innerW, inner_h)
-            h = max(1, h)
+            h = max(1, min(h, inner_h))
             self._inner = kif
             candidate = h + 2 * self.padding + border
             self._height = max(1, min(candidate, availH - EPS))
@@ -462,6 +464,23 @@ class RoundedCard(Flowable):
 
         if self._inner:
             self._inner.drawOn(c, self.padding, self.padding)
+
+    def split(self, availW, availH):
+        border = self.strokeWidth * 2
+        EPS = 1.0
+        outer_w = max(1, availW - border - EPS)
+        inner_w = max(1, outer_w - 2 * self.padding)
+
+        probe = KeepInFrame(inner_w, 1_000_000, self.content, mode="shrink")
+        _, natural_h = probe.wrapOn(self.canv, inner_w, 1_000_000)
+        natural_total = max(1, natural_h) + 2 * self.padding + border
+
+        if natural_total <= availH:
+            return [self]
+        if availH >= 200:
+            return [self]
+        return list(self.content) if isinstance(self.content, (list, tuple)) else [self.content]
+
 
 def make_projects_section(projects, styles):
     if not projects:
