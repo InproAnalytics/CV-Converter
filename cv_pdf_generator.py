@@ -425,28 +425,27 @@ class RoundedCard(Flowable):
         innerW = self._outerW - 2 * self.padding
         innerW = max(1, innerW)
 
+        # A card never splits. It either fits where it is, moves whole to the
+        # next page, or — only if taller than a full page — shrinks to fit one
+        # page. MAX_CARD_H stays safely under the usable A4 frame height (~708pt).
+        MAX_CARD_H = 700
+
         NATURAL_H = 1_000_000
         natural_kif = KeepInFrame(innerW, NATURAL_H, self.content, mode="shrink")
         _, natural_h = natural_kif.wrapOn(self.canv, innerW, NATURAL_H)
         natural_h = max(1, natural_h)
         natural_total = natural_h + 2 * self.padding + border
 
-        FRESH_PAGE_MIN = 200
-
-        if natural_total <= availH:
+        if natural_total <= MAX_CARD_H:
             self._inner = natural_kif
             self._height = natural_total
-        elif availH >= FRESH_PAGE_MIN:
-            inner_h = max(1, availH - 2 * self.padding - border)
+        else:
+            inner_h = max(1, MAX_CARD_H - 2 * self.padding - border)
             kif = KeepInFrame(innerW, inner_h, self.content, mode="shrink")
             _, h = kif.wrapOn(self.canv, innerW, inner_h)
             h = max(1, min(h, inner_h))
             self._inner = kif
-            candidate = h + 2 * self.padding + border
-            self._height = max(1, min(candidate, availH - EPS))
-        else:
-            self._inner = natural_kif
-            self._height = natural_total
+            self._height = h + 2 * self.padding + border
 
         return self._outerW + border, self._height
 
@@ -467,22 +466,6 @@ class RoundedCard(Flowable):
 
         if self._inner:
             self._inner.drawOn(c, self.padding, self.padding)
-
-    def split(self, availW, availH):
-        border = self.strokeWidth * 2
-        EPS = 1.0
-        outer_w = max(1, availW - border - EPS)
-        inner_w = max(1, outer_w - 2 * self.padding)
-
-        probe = KeepInFrame(inner_w, 1_000_000, self.content, mode="shrink")
-        _, natural_h = probe.wrapOn(self.canv, inner_w, 1_000_000)
-        natural_total = max(1, natural_h) + 2 * self.padding + border
-
-        if natural_total <= availH:
-            return [self]
-        if availH >= 200:
-            return [self]
-        return list(self.content) if isinstance(self.content, (list, tuple)) else [self.content]
 
 
 def make_projects_section(projects, styles):
