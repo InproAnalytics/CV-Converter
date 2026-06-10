@@ -437,7 +437,8 @@ class RoundedCard(Flowable):
             _, h = kif.wrapOn(self.canv, innerW, inner_h)
             h = max(1, h)
             self._inner = kif
-            self._height = max(1, h + 2 * self.padding + border)
+            candidate = h + 2 * self.padding + border
+            self._height = max(1, min(candidate, availH - EPS))
         else:
             self._inner = natural_kif
             self._height = natural_total
