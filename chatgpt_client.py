@@ -696,14 +696,16 @@ RULES:
 -Never invent data not present in the source. Unknown=""or[].
 -Preserve special characters exactly: C#, C++, .NET, F#, Node.js, etc.
 -Dates:copy exactly,no reformatting.
+-title:the candidate's primary headline/title exactly as stated at the top of the CV (e.g. "Project Manager"). Do NOT append extra role names from work history.
 -education:ALL entries,exact degree/institution/year.
 -languages:SPOKEN HUMAN LANGUAGES ONLY (English,German,Spanish,French,Mandarin,Albanian,etc.) explicitly stated as spoken/fluent/native. NEVER include programming languages (Python,Java,C#,JavaScript,etc.),frameworks,tools,or technologies. If the source CV does not have a dedicated "Languages" section for spoken languages,return []. Do NOT infer from country of origin or location.
 -profile_summary:third-person technical,60-70 words max.
--hard_skills:assign each tool to exactly ONE category using this taxonomy:{_SKILL_TAXONOMY}. Only include tools EXPLICITLY mentioned in the source CV.
--projects_experience:ALL projects,none skipped.
+-hard_skills:assign each tool to exactly ONE category using this taxonomy:{_SKILL_TAXONOMY}. Only include tools EXPLICITLY mentioned in the source CV. Capture EVERY tool/platform listed in any "Tools","Tools & Platforms","Technologies" or "Environment" section — do not drop any (e.g. MS Project,Camunda,BPMN,Visio).
+-projects_experience:Include EVERY work experience / role entry from the source,none skipped. A role MUST be included even if it has no bullet points or description — in that case still output its project_title,company,role,and duration,with responsibilities as []. Never omit a position just because it lacks detail.
   company=actual employer/client name only,no city. If the project appears under a parent company (e.g. "Globant" with sub-projects "4Insite","Squarespace"),the company is the parent name. NEVER leave empty if the source mentions any employer.
-  overview:2-4 sentence consulting summary(60-120 words):project scope,business domain,system landscape,consultant role. Preserve source description if present;otherwise synthesize from responsibilities and tech stack. Strictly factual,no fabrication.
-  responsibilities:Extract EVERY responsibility bullet from the source — do NOT drop,merge,or skip any. Rewrite each in consulting-engagement style(20-35 words):action verb+what was done+technical mechanism or context. Expand terse bullets ONLY using context explicitly present elsewhere in this CV(same project overview,tech stack,role). Never invent metrics,tools,or outcomes.
+  project_title:the project name if one exists;otherwise use the role/job title.
+  overview:2-4 sentence consulting summary(60-120 words):project scope,business domain,system landscape,consultant role. Preserve source description if present;otherwise synthesize from responsibilities and tech stack. Strictly factual,no fabrication. If the source role has no description at all,leave "".
+  responsibilities:Extract EVERY responsibility bullet from the source — do NOT drop,merge,or skip any. ALSO capture any "Key Outcomes","Key Outcome","Achievements","Results" or "Impact" lines under the role as responsibility bullets,preserving all metrics/percentages EXACTLY (e.g. "78% reduction in incident rates","90% on-time delivery"). Never drop quantified achievements. Rewrite each in consulting-engagement style(20-35 words):action verb+what was done+technical mechanism or context. Expand terse bullets ONLY using context explicitly present elsewhere in this CV(same project overview,tech stack,role). Never invent metrics,tools,or outcomes.
   tech_stack:ALL tools listed in the project environment/tech section — include every tool mentioned,no cap.
   duration:If end-date < start-date in the source,fix it by swapping or correcting the obvious typo (e.g. "Jun – Mar 2022" likely means "Mar – Jun 2022"). Never output a duration where the end is before the start.
   domains:max 1 industry,[]if unclear.

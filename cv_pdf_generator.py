@@ -149,7 +149,7 @@ def p(text, style):
     return Paragraph(text.replace("\n", "<br/>"), style)
 
 def format_category_name(key: str) -> str:
-    return {
+    mapping = {
         "cloud_platforms": "Cloud Platforms",
         "devops_iac": "DevOps & IaC",
         "monitoring_security": "Monitoring & Security",
@@ -162,8 +162,26 @@ def format_category_name(key: str) -> str:
         "security": "Security",
         "ai_ml_tools": "AI & ML Tools",
         "infrastructure_os": "Infrastructure & OS",
-        "other_tools": "Other Tools"
-    }.get(key, key.replace("_", " ").title())
+        "bi_tools": "BI Tools",
+        "etl_tools": "ETL Tools",
+        "data_engineering": "Data Engineering",
+        "analytics": "Analytics",
+        "other_tools": "Other Tools",
+    }
+    raw = str(key or "").strip()
+    # Normalize both the JSON key form ("bi_tools") and the free-text form ("Bi Tools").
+    norm = re.sub(r"[\s/&]+", "_", raw.lower()).strip("_")
+    if norm in mapping:
+        return mapping[norm]
+    label = raw.replace("_", " ").title()
+    # Fix common acronyms that .title() lowercases.
+    for wrong, right in (
+        ("Bi Tools", "BI Tools"), ("Ai ", "AI "), ("Ml ", "ML "),
+        ("Ci/cd", "CI/CD"), ("Erp", "ERP"), (" Os", " OS"), ("Iac", "IaC"),
+        ("Etl", "ETL"), ("Sql", "SQL"), ("Bpmn", "BPMN"),
+    ):
+        label = label.replace(wrong, right)
+    return label
 
 # --- Sections ---
 def make_left_box(data, styles, max_w=0, max_h=0):
@@ -173,14 +191,20 @@ def make_left_box(data, styles, max_w=0, max_h=0):
     edu = data.get("education", "")
     # Support both formats: new (degree/institution/year) and legacy (Institution/Abschluss/Jahr)
     if isinstance(edu, list):
+        def _is_certificate(row):
+            degree = str(row.get("degree") or row.get("Abschluss") or "")
+            return "certificate" in degree.lower() or "certification" in degree.lower()
+
         def edu_row_to_str(row):
             if not isinstance(row, dict):
                 return ""
             if any(k in row for k in ("degree", "institution", "year")):
                 return " | ".join(str(v) for v in [row.get("degree"), row.get("institution"), row.get("year")] if v)
             return " | ".join(str(v) for v in [row.get("Institution"), row.get("Abschluss"), row.get("Jahr")] if v)
+        # Education section shows only college/university degrees, not certificates.
         edu = "<br/>".join([
-            edu_row_to_str(row) for row in edu if isinstance(row, dict) and any(row.values())
+            edu_row_to_str(row) for row in edu
+            if isinstance(row, dict) and any(row.values()) and not _is_certificate(row)
         ])
     if edu:
         items += [p("<b>Education:</b>", header_style), p(edu, styles["Normal"]), Spacer(0, 6)]
@@ -425,9 +449,6 @@ class RoundedCard(Flowable):
         innerW = self._outerW - 2 * self.padding
         innerW = max(1, innerW)
 
-        # A card never splits. It either fits where it is, moves whole to the
-        # next page, or — only if taller than a full page — shrinks to fit one
-        # page. MAX_CARD_H stays safely under the usable A4 frame height (~708pt).
         MAX_CARD_H = 700
 
         NATURAL_H = 1_000_000
@@ -515,7 +536,10 @@ def make_projects_section(projects, styles):
 
         # --- Card header ---
         header = f"<b>Project {idx}. {title}</b>"
-        role_company_parts = [p for p in [role, company] if p]
+        # Avoid repeating the role when the project title is just the role
+        # (role-based CVs with no distinct project names).
+        subtitle_role = "" if role and role.strip().lower() == title.strip().lower() else role
+        role_company_parts = [p for p in [subtitle_role, company] if p]
         if role_company_parts:
             header += f'<br/><font size="11" color="#888888">{" · ".join(role_company_parts)}</font>'
         if duration:
